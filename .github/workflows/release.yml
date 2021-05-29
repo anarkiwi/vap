@@ -1,0 +1,35 @@
+name: release 
+
+on:
+  release:
+    types:
+      - published
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: build 
+      run: |
+        ./build.sh
+    - name: upload PAL PRG
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./vap.prg
+        asset_name: vap-pal.prg
+        asset_content_type: application/octet-stream
+    - name: upload PAL D64
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./vap.d64
+        asset_name: vap-pal.d64
+        asset_content_type: application/octet-stream
