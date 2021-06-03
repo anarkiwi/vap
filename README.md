@@ -1,4 +1,4 @@
-# vmp
+# vap
 Vessel ASID Player
 ==================
 
@@ -10,5 +10,6 @@ application with Vessel as a C64 hardware sound source.
 Sample applications
 -------------------
 
+* [ASID VICE](https://github.com/anarkiwi/asid-vice/) - an old fork of VICE, with ASID support.
 * [Inesid](https://inesid.fazibear.me/) - Chrome browser based (plays slowly, same behavior on a real SIDStation)
 * [AsidXP](http://www.elektron.se/support/) - works under Wine on Ubuntu 20.04 (after libasound2-plugins:i386)
