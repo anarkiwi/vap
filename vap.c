@@ -14,7 +14,7 @@
 #define SCREENMEM       ((unsigned char*)0x0400)
 #define BORDERCOLOR     ((unsigned char*)0xd020)
 #define SIDBASE         ((unsigned char*)0xd400)
-#define SIDREGSIZE      28
+#define SIDREGSIZE      25
 
 #define SYSEX_START     0xf0
 #define SYSEX_MANID     0x2d
@@ -25,7 +25,7 @@
 #define ASID_CMD_UPDATE 0x4e
 
 unsigned char buf[256] = {};
-const unsigned char regidmap[SIDREGSIZE] = {
+const unsigned char regidmap[] = {
   0, // ID 0
   1, // ID 1
   2, // ID 2
@@ -54,9 +54,6 @@ const unsigned char regidmap[SIDREGSIZE] = {
   4, // ID 22
   11, // ID 23
   18, // ID 24
-  25, // ID 25
-  26, // ID 26
-  27, // ID 27
 };
 
 
