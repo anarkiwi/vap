@@ -14,6 +14,7 @@
 #define SCREENMEM       ((unsigned char*)0x0400)
 #define BORDERCOLOR     ((unsigned char*)0xd020)
 #define SIDBASE         ((unsigned char*)0xd400)
+#define SIDBASE2        ((unsigned char*)0xd420)
 #define SIDREGSIZE      28
 
 #define SYSEX_START     0xf0
@@ -23,6 +24,7 @@
 #define ASID_CMD_START  0x4c
 #define ASID_CMD_STOP   0x4d
 #define ASID_CMD_UPDATE 0x4e
+#define ASID_CMD_UPDATE2 0x50
 
 unsigned char buf[256] = {};
 const unsigned char regidmap[] = {
@@ -71,6 +73,7 @@ void initsid(void) {
   register unsigned char i = 0;
   for (i = 0; i < SIDREGSIZE; ++i) {
     *(SIDBASE + i) = 0;
+    *(SIDBASE2 + i) = 0;
   }
 }
 
@@ -79,26 +82,26 @@ void init(void) {
   initvessel();
 }
 
-#define REGMASK(mask, regid)  \
+#define REGMASK(base, mask, regid)  \
   if (regidflags & mask) { \
     val = buf[lsbp]; \
     if (msbs & mask) { \
       val |= 0x80; \
     } \
-    *(SIDBASE + regidmap[regid]) = val; \
+    *(base + regidmap[regid]) = val; \
     ++lsbp; \
   }
 
-#define BYTEREG(regid) \
+#define BYTEREG(base, regid) \
     regidflags = buf[flagp++]; \
     msbs = buf[msbp++]; \
-    REGMASK(1, regid + 0); \
-    REGMASK(2, regid + 1); \
-    REGMASK(4, regid + 2); \
-    REGMASK(8, regid + 3); \
-    REGMASK(16, regid + 4); \
-    REGMASK(32, regid + 5); \
-    REGMASK(64, regid + 6);
+    REGMASK(base, 1, regid + 0); \
+    REGMASK(base, 2, regid + 1); \
+    REGMASK(base, 4, regid + 2); \
+    REGMASK(base, 8, regid + 3); \
+    REGMASK(base, 16, regid + 4); \
+    REGMASK(base, 32, regid + 5); \
+    REGMASK(base, 64, regid + 6);
 
 
 void handlesysex(unsigned char cmdp) {
@@ -111,10 +114,15 @@ void handlesysex(unsigned char cmdp) {
   register unsigned char val;
 
   if (cmd == ASID_CMD_UPDATE) {
-    BYTEREG(0);
-    BYTEREG(7);
-    BYTEREG(14);
-    BYTEREG(21);
+    BYTEREG(SIDBASE, 0);
+    BYTEREG(SIDBASE, 7);
+    BYTEREG(SIDBASE, 14);
+    BYTEREG(SIDBASE, 21);
+  } else if (cmd == ASID_CMD_UPDATE2) {
+    BYTEREG(SIDBASE2, 0);
+    BYTEREG(SIDBASE2, 7);
+    BYTEREG(SIDBASE2, 14);
+    BYTEREG(SIDBASE2, 21);
   } else if (cmd == ASID_CMD_START || cmd == ASID_CMD_STOP) {
     initsid();
   }
