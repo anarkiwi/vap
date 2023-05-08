@@ -6,8 +6,9 @@ VAP enables remote access to SID registers over MIDI SysEx messages, using the [
 protocol, which was introduced with the Elektron SIDStation.  Any SID player supporting ASID can use this
 application with Vessel as a C64 hardware sound source.
 
+If you have a second SID installed at $D420, VAP supports accessing it with ASID update messages using command 0x50 (rather than 0x4e).
 
-Sample applications
+Other ASID sample applications
 -------------------
 
 * [ASID VICE](https://github.com/anarkiwi/asid-vice/) - an fork of VICE, with ASID support.
