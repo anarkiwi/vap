@@ -88,21 +88,21 @@ const unsigned char regidmap[] = {
     18, // ID 27
 };
 
-inline void initvessel(void) {
+void initvessel(void) {
   VOUT;
   VCMD(0); // reset
   VCMD(4); // config passthrough
   VW(4);
 }
 
-inline void initsid(void) {
+void initsid(void) {
   for (i = 0; i < SIDREGSIZE; ++i) {
     *(SIDBASE + i) = 0;
     *(SIDBASE2 + i) = 0;
   }
 }
 
-inline void init(void) {
+void init(void) {
   initsid();
   initvessel();
 }
@@ -137,7 +137,7 @@ inline void init(void) {
   BYTEREG(base, 14);                                                           \
   BYTEREG(base, 21);
 
-int main(void) {
+void main(void) {
   *VICII = 0x0b;
   SEI();
   init();
@@ -178,6 +178,4 @@ int main(void) {
       }
     }
   }
-
-  return 0;
 }
