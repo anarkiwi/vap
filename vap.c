@@ -88,21 +88,21 @@ const unsigned char regidmap[] = {
     18, // ID 27
 };
 
-void initvessel(void) {
+inline void initvessel(void) {
   VOUT;
   VCMD(0); // reset
   VCMD(4); // config passthrough
   VW(4);
 }
 
-void initsid(void) {
+inline void initsid(void) {
   for (i = 0; i < SIDREGSIZE; ++i) {
     *(SIDBASE + i) = 0;
     *(SIDBASE2 + i) = 0;
   }
 }
 
-void init(void) {
+inline void init(void) {
   initsid();
   initvessel();
 }
@@ -137,21 +137,11 @@ void init(void) {
   BYTEREG(base, 14);                                                           \
   BYTEREG(base, 21);
 
-void handlesysex() {
-  cmd = buf[cmdp];
-  if (cmd == ASID_CMD_UPDATE) {
-    UPDATESID(SIDBASE);
-  } else if (cmd == ASID_CMD_UPDATE2) {
-    UPDATESID(SIDBASE2);
-  } else if (cmd == ASID_CMD_UPDATE_BOTH) {
-    UPDATESID(SIDBASE);
-    UPDATESID(SIDBASE2);
-  } else if (cmd == ASID_CMD_START || cmd == ASID_CMD_STOP) {
-    initsid();
-  }
-}
+int main(void) {
+  *VICII = 0x0b;
+  SEI();
+  init();
 
-void midiloop(void) {
   for (;;) {
     VIN;
     for (i = VR; i; --i) {
@@ -162,7 +152,18 @@ void midiloop(void) {
       ch = buf[++readp];
       if (ch == expected_ch) {
         if (ch == SYSEX_STOP) {
-          handlesysex();
+          cmd = buf[cmdp];
+          if (cmd == ASID_CMD_UPDATE) {
+            UPDATESID(SIDBASE);
+          } else if (cmd == ASID_CMD_UPDATE2) {
+            UPDATESID(SIDBASE2);
+          } else if (cmd == ASID_CMD_UPDATE_BOTH) {
+            UPDATESID(SIDBASE);
+            UPDATESID(SIDBASE2);
+          } else if (cmd == ASID_CMD_START || cmd == ASID_CMD_STOP) {
+            initsid();
+          }
+
           expected_ch = SYSEX_START;
         } else if (ch == SYSEX_START) {
           expected_ch = SYSEX_MANID;
@@ -177,11 +178,6 @@ void midiloop(void) {
       }
     }
   }
-}
 
-void main(void) {
-  *VICII = 0x0b;
-  SEI();
-  init();
-  midiloop();
+  return 0;
 }
