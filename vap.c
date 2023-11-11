@@ -22,6 +22,7 @@
 #include <6502.h>
 #include <stdio.h>
 
+#define RUN_BUFFER 0xc000
 #define VICII ((unsigned char *)0xd011)
 #define SCREENMEM ((unsigned char *)0x0400)
 #define BORDERCOLOR ((unsigned char *)0xd020)
@@ -30,7 +31,7 @@
 #define SIDREGSIZE 28
 
 #define SYSEX_START 0xf0
-#define SYSEX_MANID 0x2d
+#define ASID_MANID 0x2d
 #define SYSEX_STOP 0xf7
 
 #define ASID_CMD_START 0x4c
@@ -38,7 +39,15 @@
 #define ASID_CMD_UPDATE 0x4e
 #define ASID_CMD_UPDATE2 0x50
 #define ASID_CMD_UPDATE_BOTH 0x51
+#define ASID_CMD_RUN_BUFFER 0x52
+#define ASID_CMD_LOAD_BUFFER 0x53
 
+#define DATA_ANY 0
+#define DATA_MANID 1
+#define DATA_CMD 2
+#define DATA_LOAD 3
+
+unsigned char expected_data = DATA_ANY;
 unsigned char buf[256] = {};
 unsigned char cmd = 0;
 unsigned char flagp = 0;
@@ -50,9 +59,10 @@ unsigned char val = 0;
 unsigned char writep = 0;
 unsigned char readp = 0;
 unsigned char cmdp = 0;
-unsigned char expected_ch = SYSEX_START;
 unsigned char ch = 0;
 unsigned char i = 0;
+unsigned char loadmsb = 0;
+unsigned char *loadbuffer = 0;
 
 const unsigned char regidmap[] = {
     0, // ID 0
@@ -97,8 +107,8 @@ void initvessel(void) {
 
 void initsid(void) {
   for (i = 0; i < SIDREGSIZE; ++i) {
-    *(SIDBASE + i) = 0;
-    *(SIDBASE2 + i) = 0;
+    SIDBASE[i] = 0;
+    SIDBASE2[i] = 0;
   }
 }
 
@@ -109,24 +119,25 @@ void init(void) {
 
 #define REGMASK(base, mask, regid)                                             \
   if (regidflags & mask) {                                                     \
-    val = buf[lsbp];                                                           \
+    val = buf[lsbp++];                                                         \
     if (msbs & mask) {                                                         \
       val |= 0x80;                                                             \
     }                                                                          \
-    *(base + regidmap[regid]) = val;                                           \
-    ++lsbp;                                                                    \
+    base[regidmap[regid]] = val;                                               \
   }
 
 #define BYTEREG(base, regid)                                                   \
   regidflags = buf[flagp++];                                                   \
   msbs = buf[msbp++];                                                          \
-  REGMASK(base, 1, regid + 0);                                                 \
-  REGMASK(base, 2, regid + 1);                                                 \
-  REGMASK(base, 4, regid + 2);                                                 \
-  REGMASK(base, 8, regid + 3);                                                 \
-  REGMASK(base, 16, regid + 4);                                                \
-  REGMASK(base, 32, regid + 5);                                                \
-  REGMASK(base, 64, regid + 6);
+  if (regidflags) {                                                            \
+    REGMASK(base, 1, regid + 0);                                               \
+    REGMASK(base, 2, regid + 1);                                               \
+    REGMASK(base, 4, regid + 2);                                               \
+    REGMASK(base, 8, regid + 3);                                               \
+    REGMASK(base, 16, regid + 4);                                              \
+    REGMASK(base, 32, regid + 5);                                              \
+    REGMASK(base, 64, regid + 6);                                              \
+  }
 
 #define UPDATESID(base)                                                        \
   flagp = cmdp + 1;                                                            \
@@ -137,19 +148,92 @@ void init(void) {
   BYTEREG(base, 14);                                                           \
   BYTEREG(base, 21);
 
-void handlesysex() {
-  cmd = buf[cmdp];
-  if (cmd == ASID_CMD_UPDATE) {
-    UPDATESID(SIDBASE);
-  } else if (cmd == ASID_CMD_UPDATE2) {
-    UPDATESID(SIDBASE2);
-  } else if (cmd == ASID_CMD_UPDATE_BOTH) {
-    UPDATESID(SIDBASE);
-    UPDATESID(SIDBASE2);
-  } else if (cmd == ASID_CMD_START || cmd == ASID_CMD_STOP) {
-    initsid();
+#define HANDLE_ASID_CMD                                                        \
+  switch (cmd) {                                                               \
+  case ASID_CMD_UPDATE:                                                        \
+    UPDATESID(SIDBASE);                                                        \
+    break;                                                                     \
+  case ASID_CMD_UPDATE2:                                                       \
+    UPDATESID(SIDBASE2);                                                       \
+    break;                                                                     \
+  case ASID_CMD_UPDATE_BOTH:                                                   \
+    UPDATESID(SIDBASE);                                                        \
+    UPDATESID(SIDBASE2);                                                       \
+    break;                                                                     \
+  case ASID_CMD_RUN_BUFFER:                                                    \
+    __asm__("jsr %w", RUN_BUFFER);                                             \
+    break;                                                                     \
+  case ASID_CMD_START:                                                         \
+    initsid();                                                                 \
+    break;                                                                     \
+  case ASID_CMD_STOP:                                                          \
+    initsid();                                                                 \
+    break;                                                                     \
   }
-}
+
+#define HANDLE_MIDI_CMD                                                        \
+  switch (ch) {                                                                \
+  case SYSEX_STOP:                                                             \
+    if (cmd) {                                                                 \
+      HANDLE_ASID_CMD;                                                         \
+    }                                                                          \
+    cmd = 0;                                                                   \
+    expected_data = DATA_ANY;                                                  \
+    break;                                                                     \
+  case SYSEX_START:                                                            \
+    expected_data = DATA_MANID;                                                \
+    break;                                                                     \
+  }
+
+#define SET_LOAD_MSB(n)                                                        \
+  {                                                                            \
+    ch = ch << 1;                                                              \
+    loadbuffer[n] = ch & 0x80;                                                 \
+  }
+
+#define HANDLE_LOAD                                                            \
+  if (loadmsb) {                                                               \
+    *loadbuffer = *loadbuffer | ch;                                            \
+    ++loadbuffer;                                                              \
+    --loadmsb;                                                                 \
+  } else {                                                                     \
+    loadmsb = 6;                                                               \
+    ch = ch << 1;                                                              \
+    SET_LOAD_MSB(6);                                                           \
+    SET_LOAD_MSB(5);                                                           \
+    SET_LOAD_MSB(4);                                                           \
+    SET_LOAD_MSB(3);                                                           \
+    SET_LOAD_MSB(2);                                                           \
+    SET_LOAD_MSB(1);                                                           \
+    SET_LOAD_MSB(0);                                                           \
+  }
+
+#define HANDLE_MIDI_DATA                                                       \
+  switch (expected_data) {                                                     \
+  case DATA_LOAD:                                                              \
+    HANDLE_LOAD;                                                               \
+    break;                                                                     \
+  case DATA_MANID:                                                             \
+    if (ch == ASID_MANID) {                                                    \
+      expected_data = DATA_CMD;                                                \
+    } else {                                                                   \
+      expected_data = DATA_ANY;                                                \
+    }                                                                          \
+    break;                                                                     \
+  case DATA_CMD:                                                               \
+    cmd = ch;                                                                  \
+    cmdp = readp;                                                              \
+    if (cmd == ASID_CMD_LOAD_BUFFER) {                                         \
+      expected_data = DATA_LOAD;                                               \
+      loadbuffer = (unsigned char *)RUN_BUFFER;                                \
+      loadmsb = 0;                                                             \
+    } else {                                                                   \
+      expected_data = DATA_ANY;                                                \
+    }                                                                          \
+    break;                                                                     \
+  default:                                                                     \
+    expected_data = DATA_ANY;                                                  \
+  }
 
 void midiloop(void) {
   for (;;) {
@@ -160,20 +244,10 @@ void midiloop(void) {
     VOUT;
     while (writep != readp) {
       ch = buf[++readp];
-      if (ch == expected_ch) {
-        if (ch == SYSEX_STOP) {
-          handlesysex();
-          expected_ch = SYSEX_START;
-        } else if (ch == SYSEX_START) {
-          expected_ch = SYSEX_MANID;
-        } else if (ch == SYSEX_MANID) {
-          expected_ch = SYSEX_STOP;
-          cmdp = readp + 1;
-        }
-      } else {
-        if (expected_ch == SYSEX_MANID) {
-          expected_ch = SYSEX_START;
-        }
+      if (ch & 0x80) {
+        HANDLE_MIDI_CMD;
+      } else if (expected_data) {
+        HANDLE_MIDI_DATA;
       }
     }
   }
