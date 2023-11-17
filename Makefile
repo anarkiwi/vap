@@ -1,7 +1,7 @@
 all: vap.d64 vap.prg
 
+#  /usr/local/llvm-mos/bin/mos-c64-clang -O3 -o vap.prg vap.c
 vap.prg: vap.c vessel.h Makefile
-	# /usr/local/llvm-mos/bin/mos-c64-clang -O3 -o vap.prg vap.c
 	cl65 -Osir -Cl vap.c -o vap.prg
 
 vap.d64: vap.prg
@@ -12,3 +12,7 @@ clean:
 
 upload: all
 	ncftpput -p "" -Cv c64 vap.prg /Temp/vap.prg
+
+upload-crt: all
+	./prg2crt.py vap.prg vap.crt
+	ncftpput -p "" -Cv c64 vap.crt /Flash/carts/vap.crt
