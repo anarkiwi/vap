@@ -8,7 +8,7 @@ vap.d64: vap.prg
 	c1541 -format diskname,id d64 vap.d64 -attach vap.d64 -write vap.prg vap
 
 clean:
-	rm -f vap.prg vap.d64 vap.prg.elf
+	rm -f vap.prg vap.d64 vap.prg.elf vap.o vap.crt
 
 upload: all
 	ncftpput -p "" -Cv c64 vap.prg /Temp/vap.prg
