@@ -198,7 +198,6 @@ void init(void) {
     --loadmsb;                                                                 \
   } else {                                                                     \
     loadmsb = 6;                                                               \
-    ch = ch << 1;                                                              \
     SET_LOAD_MSB(6);                                                           \
     SET_LOAD_MSB(5);                                                           \
     SET_LOAD_MSB(4);                                                           \
