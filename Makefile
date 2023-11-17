@@ -1,6 +1,6 @@
 all: vap.d64 vap.prg
 
-vap.prg: vap.c vessel.h 
+vap.prg: vap.c vessel.h Makefile
 	cl65 -Osir -Cl vap.c -o vap.prg
 
 vap.d64: vap.prg
