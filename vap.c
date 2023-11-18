@@ -197,7 +197,7 @@ void init(void) {
     ++loadbuffer;                                                              \
     --loadmsb;                                                                 \
   } else {                                                                     \
-    loadmsb = 6;                                                               \
+    loadmsb = 7;                                                               \
     SET_LOAD_MSB(6);                                                           \
     SET_LOAD_MSB(5);                                                           \
     SET_LOAD_MSB(4);                                                           \
