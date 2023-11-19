@@ -22,6 +22,8 @@
 #include <6502.h>
 #include <stdio.h>
 
+#define CLOCK_ACK VW(0xF8)
+
 #define RUN_BUFFER 0xc000
 #define VICII ((unsigned char *)0xd011)
 #define SCREENMEM ((unsigned char *)0x0400)
@@ -176,6 +178,7 @@ void init(void) {
   case SYSEX_STOP:                                                             \
     if (cmd) {                                                                 \
       HANDLE_ASID_CMD;                                                         \
+      CLOCK_ACK;                                                               \
     }                                                                          \
     cmd = 0;                                                                   \
     expected_data = DATA_ANY;                                                  \
