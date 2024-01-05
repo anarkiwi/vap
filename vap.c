@@ -43,6 +43,7 @@
 #define ASID_CMD_UPDATE_BOTH 0x51
 #define ASID_CMD_RUN_BUFFER 0x52
 #define ASID_CMD_LOAD_BUFFER 0x53
+#define ASID_CMD_ADDR_BUFFER 0x54
 
 #define DATA_ANY 0
 #define DATA_MANID 1
@@ -64,6 +65,7 @@ unsigned char cmdp = 0;
 unsigned char ch = 0;
 unsigned char i = 0;
 unsigned char loadmsb = 0;
+unsigned char *bufferaddr = (unsigned char *)RUN_BUFFER;
 unsigned char *loadbuffer = 0;
 
 const unsigned char regidmap[] = {
@@ -150,6 +152,23 @@ void init(void) {
   BYTEREG(base, 14);                                                           \
   BYTEREG(base, 21);
 
+#define UPDATEADDR()                                                           \
+  {                                                                            \
+    lsbp = buf[++cmdp];                                                        \
+    msbp = buf[++cmdp];                                                        \
+    flagp = buf[++cmdp];                                                       \
+    if (flagp & 1) {                                                           \
+      lsbp |= 0x80;                                                            \
+    }                                                                          \
+    if (flagp & 2) {                                                           \
+      msbp |= 0x80;                                                            \
+    }                                                                          \
+    __asm__("lda %v", lsbp);                                                   \
+    __asm__("sta %v", bufferaddr);                                             \
+    __asm__("lda %v", msbp);                                                   \
+    __asm__("sta %v+1", bufferaddr);                                           \
+  }
+
 #define HANDLE_ASID_CMD                                                        \
   switch (cmd) {                                                               \
   case ASID_CMD_UPDATE:                                                        \
@@ -164,6 +183,9 @@ void init(void) {
     break;                                                                     \
   case ASID_CMD_RUN_BUFFER:                                                    \
     __asm__("jsr %w", RUN_BUFFER);                                             \
+    break;                                                                     \
+  case ASID_CMD_ADDR_BUFFER:                                                   \
+    UPDATEADDR();                                                              \
     break;                                                                     \
   case ASID_CMD_START:                                                         \
     initsid();                                                                 \
@@ -227,7 +249,7 @@ void init(void) {
     cmdp = readp;                                                              \
     if (cmd == ASID_CMD_LOAD_BUFFER) {                                         \
       expected_data = DATA_LOAD;                                               \
-      loadbuffer = (unsigned char *)RUN_BUFFER;                                \
+      loadbuffer = bufferaddr;                                                 \
       loadmsb = 0;                                                             \
     } else {                                                                   \
       expected_data = DATA_ANY;                                                \
