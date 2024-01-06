@@ -182,7 +182,7 @@ void init(void) {
     UPDATESID(SIDBASE2);                                                       \
     break;                                                                     \
   case ASID_CMD_RUN_BUFFER:                                                    \
-    __asm__("jsr %w", RUN_BUFFER);                                             \
+    indirect();                                                                \
     break;                                                                     \
   case ASID_CMD_ADDR_BUFFER:                                                   \
     UPDATEADDR();                                                              \
@@ -258,6 +258,10 @@ void init(void) {
   default:                                                                     \
     expected_data = DATA_ANY;                                                  \
   }
+
+void indirect(void) {
+  __asm__("jmp (%v)", bufferaddr);
+}
 
 void midiloop(void) {
   for (;;) {
