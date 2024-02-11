@@ -1,8 +1,10 @@
+VERSION := $(shell git describe --tags --abbrev=0)
+
 all: vap.d64 vap.prg
 
 #  /usr/local/llvm-mos/bin/mos-c64-clang -O3 -o vap.prg vap.c
 vap.prg: vap.c vessel.h Makefile
-	cl65 -Osir -Cl vap.c -o vap.prg
+	cl65 -Osir -DVERSION=\"${VERSION}\" -Cl vap.c -o vap.prg
 
 vap.d64: vap.prg
 	c1541 -format diskname,id d64 vap.d64 -attach vap.d64 -write vap.prg vap

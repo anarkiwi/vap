@@ -20,6 +20,7 @@
 
 #include "vessel.h"
 #include <6502.h>
+#include <conio.h>
 #include <stdio.h>
 
 #define CLOCK_ACK VW(0xF8)
@@ -67,6 +68,7 @@ unsigned char i = 0;
 unsigned char loadmsb = 0;
 unsigned char *bufferaddr = (unsigned char *)RUN_BUFFER;
 unsigned char *loadbuffer = 0;
+unsigned char loadmask = 0;
 
 const unsigned char regidmap[] = {
     0, // ID 0
@@ -119,6 +121,10 @@ void initsid(void) {
 void init(void) {
   initsid();
   initvessel();
+  clrscr();
+  cputs("VAP");
+  cputs(VERSION);
+  SEI();
 }
 
 #define REGMASK(base, mask, regid)                                             \
@@ -210,26 +216,18 @@ void init(void) {
     break;                                                                     \
   }
 
-#define SET_LOAD_MSB(n)                                                        \
-  {                                                                            \
-    ch = ch << 1;                                                              \
-    loadbuffer[n] = ch & 0x80;                                                 \
-  }
-
 #define HANDLE_LOAD                                                            \
   if (loadmsb) {                                                               \
-    *loadbuffer = *loadbuffer | ch;                                            \
+    if (loadmask & 0x01) {                                                     \
+      ch |= 0x80;                                                              \
+    }                                                                          \
+    loadmask >>= 1;                                                            \
+    *loadbuffer = ch;                                                          \
     ++loadbuffer;                                                              \
     --loadmsb;                                                                 \
   } else {                                                                     \
     loadmsb = 7;                                                               \
-    SET_LOAD_MSB(6);                                                           \
-    SET_LOAD_MSB(5);                                                           \
-    SET_LOAD_MSB(4);                                                           \
-    SET_LOAD_MSB(3);                                                           \
-    SET_LOAD_MSB(2);                                                           \
-    SET_LOAD_MSB(1);                                                           \
-    SET_LOAD_MSB(0);                                                           \
+    loadmask = ch;                                                             \
   }
 
 #define HANDLE_MIDI_DATA                                                       \
@@ -282,8 +280,6 @@ void midiloop(void) {
 }
 
 void main(void) {
-  *VICII = 0x0b;
-  SEI();
   init();
   midiloop();
 }
