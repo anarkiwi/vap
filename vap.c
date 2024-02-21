@@ -45,11 +45,17 @@
 #define ASID_CMD_RUN_BUFFER 0x52
 #define ASID_CMD_LOAD_BUFFER 0x53
 #define ASID_CMD_ADDR_BUFFER 0x54
+#define ASID_CMD_LOAD_RECT_BUFFER 0x55
 
-#define DATA_ANY 0
-#define DATA_MANID 1
-#define DATA_CMD 2
-#define DATA_LOAD 3
+enum EXPECTED_DATA {
+  DATA_ANY = 0,
+  DATA_MANID,
+  DATA_CMD,
+  DATA_LOAD,
+  DATA_RECT_LOAD,
+  DATA_RECT_ROW_START,
+  DATA_RECT_ROW_SIZE,
+};
 
 unsigned char expected_data = DATA_ANY;
 unsigned char buf[256] = {};
@@ -69,6 +75,10 @@ unsigned char loadmsb = 0;
 unsigned char *bufferaddr = (unsigned char *)RUN_BUFFER;
 unsigned char *loadbuffer = 0;
 unsigned char loadmask = 0;
+unsigned char *rowloadbuffer = 0;
+unsigned char col = 0;
+unsigned char rowsize = 0;
+unsigned char rowstart = 0;
 
 const unsigned char regidmap[] = {
     0, // ID 0
@@ -216,7 +226,7 @@ void init(void) {
     break;                                                                     \
   }
 
-#define HANDLE_LOAD                                                            \
+#define HANDLE_LOAD(x)                                                         \
   if (loadmsb) {                                                               \
     if (loadmask & 0x01) {                                                     \
       ch |= 0x80;                                                              \
@@ -225,15 +235,26 @@ void init(void) {
     *loadbuffer = ch;                                                          \
     ++loadbuffer;                                                              \
     --loadmsb;                                                                 \
+    x                                                                          \
   } else {                                                                     \
     loadmsb = 7;                                                               \
     loadmask = ch;                                                             \
   }
 
+#define HANDLE_RECT_LOAD                                                       \
+  HANDLE_LOAD(if (!--col) {                                                    \
+    rowloadbuffer += rowstart;                                                 \
+    loadbuffer = rowloadbuffer;                                                \
+    col = rowsize;                                                             \
+  })
+
 #define HANDLE_MIDI_DATA                                                       \
   switch (expected_data) {                                                     \
   case DATA_LOAD:                                                              \
-    HANDLE_LOAD;                                                               \
+    HANDLE_LOAD();                                                             \
+    break;                                                                     \
+  case DATA_RECT_LOAD:                                                         \
+    HANDLE_RECT_LOAD;                                                          \
     break;                                                                     \
   case DATA_MANID:                                                             \
     if (ch == ASID_MANID) {                                                    \
@@ -245,21 +266,31 @@ void init(void) {
   case DATA_CMD:                                                               \
     cmd = ch;                                                                  \
     cmdp = readp;                                                              \
+    loadbuffer = bufferaddr;                                                   \
+    loadmsb = 0;                                                               \
     if (cmd == ASID_CMD_LOAD_BUFFER) {                                         \
       expected_data = DATA_LOAD;                                               \
-      loadbuffer = bufferaddr;                                                 \
-      loadmsb = 0;                                                             \
+    } else if (cmd == ASID_CMD_LOAD_RECT_BUFFER) {                             \
+      expected_data = DATA_RECT_ROW_START;                                     \
+      rowloadbuffer = loadbuffer;                                              \
     } else {                                                                   \
       expected_data = DATA_ANY;                                                \
     }                                                                          \
+    break;                                                                     \
+  case DATA_RECT_ROW_START:                                                    \
+    rowstart = ch;                                                             \
+    expected_data = DATA_RECT_ROW_SIZE;                                        \
+    break;                                                                     \
+  case DATA_RECT_ROW_SIZE:                                                     \
+    rowsize = ch;                                                              \
+    col = ch;                                                                  \
+    expected_data = DATA_RECT_LOAD;                                            \
     break;                                                                     \
   default:                                                                     \
     expected_data = DATA_ANY;                                                  \
   }
 
-void indirect(void) {
-  __asm__("jmp (%v)", bufferaddr);
-}
+void indirect(void) { __asm__("jmp (%v)", bufferaddr); }
 
 void midiloop(void) {
   for (;;) {
