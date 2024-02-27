@@ -51,10 +51,13 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+prg2crt.py
+
 # C64 output
 *.prg
 *.d64
 *.elf
+*.crt
 
 # backup
 *~

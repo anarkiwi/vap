@@ -21,6 +21,7 @@
 #include "vessel.h"
 #include <6502.h>
 #include <conio.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #define CLOCK_ACK VW(0xF8)
@@ -65,7 +66,7 @@ struct {
 
 struct {
   unsigned char val;
-  unsigned char count;
+  uint16_t count;
 } fillconfig;
 
 unsigned char expected_data = DATA_ANY;
@@ -88,6 +89,7 @@ unsigned char *loadbuffer = 0;
 unsigned char loadmask = 0;
 unsigned char *rowloadbuffer = 0;
 unsigned char col = 0;
+uint16_t j = 0;
 
 const unsigned char regidmap[] = {
     0, // ID 0
@@ -197,7 +199,7 @@ void init(void) {
     indirect();                                                                \
     break;                                                                     \
   case ASID_CMD_FILL_BUFFER:                                                   \
-    HANDLE_FILL_BUFFER;                                                        \
+    HANDLE_FILL_BUFFER(, );                                                    \
     break;                                                                     \
   case ASID_CMD_FILL_RECT_BUFFER:                                              \
     HANDLE_FILL_RECT_BUFFER;                                                   \
@@ -249,22 +251,21 @@ void init(void) {
 
 #define HANDLE_RECT_LOAD HANDLE_LOAD(RECT_SKIP)
 
-#define HANDLE_FILL_BUFFER                                                     \
-  col = fillconfig.count;                                                      \
+#define HANDLE_FILL_BUFFER(x, y)                                               \
+  j = fillconfig.count;                                                        \
   loadbuffer = bufferaddr;                                                     \
-  while (col--) {                                                              \
+  x while (j--) {                                                              \
     *(loadbuffer++) = fillconfig.val;                                          \
+    y                                                                          \
   }
 
 #define HANDLE_FILL_RECT_BUFFER                                                \
-  i = fillconfig.count;                                                        \
-  col = rectconfig.size;                                                       \
-  loadbuffer = bufferaddr;                                                     \
-  rowloadbuffer = loadbuffer;                                                  \
-  while (i--) {                                                                \
-    *(loadbuffer++) = fillconfig.val;                                          \
-    RECT_SKIP                                                                  \
-  }
+  HANDLE_FILL_BUFFER(                                                          \
+      {                                                                        \
+        col = rectconfig.size;                                                 \
+        rowloadbuffer = loadbuffer;                                            \
+      },                                                                       \
+      RECT_SKIP)
 
 #define HANDLE_MIDI_DATA                                                       \
   switch (expected_data) {                                                     \
