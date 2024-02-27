@@ -23,6 +23,7 @@
 #include <conio.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define CLOCK_ACK VW(0xF8)
 
@@ -62,6 +63,7 @@ enum EXPECTED_DATA {
 struct {
   unsigned char start;
   unsigned char size;
+  unsigned char inc;
 } rectconfig;
 
 struct {
@@ -143,10 +145,8 @@ void init(void) {
   initsid();
   initvessel();
   clrscr();
-  rectconfig.size = 0;
-  rectconfig.start = 0;
-  fillconfig.val = 0;
-  fillconfig.count = 0;
+  bzero(&rectconfig, sizeof(rectconfig));
+  bzero(&fillconfig, sizeof(fillconfig));
   cputs("VAP");
   cputs(VERSION);
   SEI();
@@ -244,9 +244,12 @@ void init(void) {
 
 #define RECT_SKIP                                                              \
   if (!--col) {                                                                \
-    rowloadbuffer += rectconfig.start;                                         \
-    loadbuffer = rowloadbuffer;                                                \
+    col = rectconfig.inc;                                                      \
+    while (col--) {                                                            \
+      rowloadbuffer += rectconfig.start;                                       \
+    }                                                                          \
     col = rectconfig.size;                                                     \
+    loadbuffer = rowloadbuffer;                                                \
   }
 
 #define HANDLE_RECT_LOAD HANDLE_LOAD(RECT_SKIP)
