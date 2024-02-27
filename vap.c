@@ -25,7 +25,7 @@
 
 #define CLOCK_ACK VW(0xF8)
 
-#define RUN_BUFFER 0xc000
+#define RUN_BUFFER 0x0400
 #define VICII ((unsigned char *)0xd011)
 #define SCREENMEM ((unsigned char *)0x0400)
 #define BORDERCOLOR ((unsigned char *)0xd020)
@@ -46,6 +46,7 @@
 #define ASID_CMD_LOAD_BUFFER 0x53
 #define ASID_CMD_ADDR_BUFFER 0x54
 #define ASID_CMD_LOAD_RECT_BUFFER 0x55
+#define ASID_CMD_ADDR_RECT_BUFFER 0x56
 
 enum EXPECTED_DATA {
   DATA_ANY = 0,
@@ -53,9 +54,12 @@ enum EXPECTED_DATA {
   DATA_CMD,
   DATA_LOAD,
   DATA_RECT_LOAD,
-  DATA_RECT_ROW_START,
-  DATA_RECT_ROW_SIZE,
 };
+
+struct {
+  unsigned char start;
+  unsigned char size;
+} rectconfig;
 
 unsigned char expected_data = DATA_ANY;
 unsigned char buf[256] = {};
@@ -77,8 +81,6 @@ unsigned char *loadbuffer = 0;
 unsigned char loadmask = 0;
 unsigned char *rowloadbuffer = 0;
 unsigned char col = 0;
-unsigned char rowsize = 0;
-unsigned char rowstart = 0;
 
 const unsigned char regidmap[] = {
     0, // ID 0
@@ -132,6 +134,8 @@ void init(void) {
   initsid();
   initvessel();
   clrscr();
+  rectconfig.size = 0;
+  rectconfig.start = 0;
   cputs("VAP");
   cputs(VERSION);
   SEI();
@@ -168,23 +172,6 @@ void init(void) {
   BYTEREG(base, 14);                                                           \
   BYTEREG(base, 21);
 
-#define UPDATEADDR()                                                           \
-  {                                                                            \
-    lsbp = buf[++cmdp];                                                        \
-    msbp = buf[++cmdp];                                                        \
-    flagp = buf[++cmdp];                                                       \
-    if (flagp & 1) {                                                           \
-      lsbp |= 0x80;                                                            \
-    }                                                                          \
-    if (flagp & 2) {                                                           \
-      msbp |= 0x80;                                                            \
-    }                                                                          \
-    __asm__("lda %v", lsbp);                                                   \
-    __asm__("sta %v", bufferaddr);                                             \
-    __asm__("lda %v", msbp);                                                   \
-    __asm__("sta %v+1", bufferaddr);                                           \
-  }
-
 #define HANDLE_ASID_CMD                                                        \
   switch (cmd) {                                                               \
   case ASID_CMD_UPDATE:                                                        \
@@ -199,9 +186,6 @@ void init(void) {
     break;                                                                     \
   case ASID_CMD_RUN_BUFFER:                                                    \
     indirect();                                                                \
-    break;                                                                     \
-  case ASID_CMD_ADDR_BUFFER:                                                   \
-    UPDATEADDR();                                                              \
     break;                                                                     \
   case ASID_CMD_START:                                                         \
     initsid();                                                                 \
@@ -243,9 +227,9 @@ void init(void) {
 
 #define HANDLE_RECT_LOAD                                                       \
   HANDLE_LOAD(if (!--col) {                                                    \
-    rowloadbuffer += rowstart;                                                 \
+    rowloadbuffer += rectconfig.start;                                         \
     loadbuffer = rowloadbuffer;                                                \
-    col = rowsize;                                                             \
+    col = rectconfig.size;                                                     \
   })
 
 #define HANDLE_MIDI_DATA                                                       \
@@ -266,25 +250,29 @@ void init(void) {
   case DATA_CMD:                                                               \
     cmd = ch;                                                                  \
     cmdp = readp;                                                              \
-    loadbuffer = bufferaddr;                                                   \
     loadmsb = 0;                                                               \
-    if (cmd == ASID_CMD_LOAD_BUFFER) {                                         \
+    switch (cmd) {                                                             \
+    case ASID_CMD_LOAD_BUFFER:                                                 \
+      loadbuffer = bufferaddr;                                                 \
       expected_data = DATA_LOAD;                                               \
-    } else if (cmd == ASID_CMD_LOAD_RECT_BUFFER) {                             \
-      expected_data = DATA_RECT_ROW_START;                                     \
+      break;                                                                   \
+    case ASID_CMD_LOAD_RECT_BUFFER:                                            \
+      loadbuffer = bufferaddr;                                                 \
+      expected_data = DATA_RECT_LOAD;                                          \
       rowloadbuffer = loadbuffer;                                              \
-    } else {                                                                   \
+      col = rectconfig.size;                                                   \
+      break;                                                                   \
+    case ASID_CMD_ADDR_BUFFER:                                                 \
+      loadbuffer = (unsigned char *)&bufferaddr;                               \
+      expected_data = DATA_LOAD;                                               \
+      break;                                                                   \
+    case ASID_CMD_ADDR_RECT_BUFFER:                                            \
+      loadbuffer = (unsigned char *)&rectconfig;                               \
+      expected_data = DATA_LOAD;                                               \
+      break;                                                                   \
+    default:                                                                   \
       expected_data = DATA_ANY;                                                \
     }                                                                          \
-    break;                                                                     \
-  case DATA_RECT_ROW_START:                                                    \
-    rowstart = ch;                                                             \
-    expected_data = DATA_RECT_ROW_SIZE;                                        \
-    break;                                                                     \
-  case DATA_RECT_ROW_SIZE:                                                     \
-    rowsize = ch;                                                              \
-    col = ch;                                                                  \
-    expected_data = DATA_RECT_LOAD;                                            \
     break;                                                                     \
   default:                                                                     \
     expected_data = DATA_ANY;                                                  \
