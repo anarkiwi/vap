@@ -52,6 +52,8 @@ enum ASID_CMD {
   ASID_CMD_ADDR_RECT_BUFFER,
   ASID_CMD_FILL_BUFFER,
   ASID_CMD_FILL_RECT_BUFFER,
+  ASID_CMD_COPY_BUFFER,
+  ASID_CMD_COPY_RECT_BUFFER,
 };
 
 enum EXPECTED_DATA {
@@ -72,6 +74,11 @@ struct {
   unsigned char val;
   uint16_t count;
 } fillconfig;
+
+struct {
+  unsigned char *from;
+  uint16_t count;
+} copyconfig;
 
 unsigned char expected_data = DATA_ANY;
 unsigned char buf[256] = {};
@@ -149,6 +156,7 @@ void init(void) {
   clrscr();
   bzero(&rectconfig, sizeof(rectconfig));
   bzero(&fillconfig, sizeof(fillconfig));
+  bzero(&copyconfig, sizeof(copyconfig));
   cputs("VAP");
   cputs(VERSION);
   SEI();
@@ -206,6 +214,12 @@ void init(void) {
   case ASID_CMD_FILL_RECT_BUFFER:                                              \
     HANDLE_FILL_RECT_BUFFER;                                                   \
     break;                                                                     \
+  case ASID_CMD_COPY_BUFFER:                                                   \
+    HANDLE_COPY_BUFFER(, );                                                    \
+    break;                                                                     \
+  case ASID_CMD_COPY_RECT_BUFFER:                                              \
+    HANDLE_COPY_RECT_BUFFER;                                                   \
+    break;                                                                     \
   case ASID_CMD_START:                                                         \
     initsid();                                                                 \
     break;                                                                     \
@@ -254,6 +268,12 @@ void init(void) {
     loadbuffer = rowloadbuffer;                                                \
   }
 
+#define RECT_INIT                                                              \
+  {                                                                            \
+    col = rectconfig.size;                                                     \
+    rowloadbuffer = loadbuffer;                                                \
+  }
+
 #define HANDLE_RECT_LOAD HANDLE_LOAD(RECT_SKIP)
 
 #define HANDLE_FILL_BUFFER(x, y)                                               \
@@ -264,13 +284,16 @@ void init(void) {
     y                                                                          \
   }
 
-#define HANDLE_FILL_RECT_BUFFER                                                \
-  HANDLE_FILL_BUFFER(                                                          \
-      {                                                                        \
-        col = rectconfig.size;                                                 \
-        rowloadbuffer = loadbuffer;                                            \
-      },                                                                       \
-      RECT_SKIP)
+#define HANDLE_FILL_RECT_BUFFER HANDLE_FILL_BUFFER(RECT_INIT, RECT_SKIP)
+
+#define HANDLE_COPY_BUFFER(x, y)                                               \
+  loadbuffer = bufferaddr;                                                     \
+  x while (copyconfig.count--) {                                               \
+    *(loadbuffer++) = *(copyconfig.from++);                                    \
+    y                                                                          \
+  }
+
+#define HANDLE_COPY_RECT_BUFFER HANDLE_COPY_BUFFER(RECT_INIT, RECT_SKIP)
 
 #define HANDLE_MIDI_DATA                                                       \
   switch (expected_data) {                                                     \
@@ -291,32 +314,34 @@ void init(void) {
     cmd = ch;                                                                  \
     cmdp = readp;                                                              \
     loadmsb = 0;                                                               \
+    expected_data = DATA_LOAD;                                                 \
     switch (cmd) {                                                             \
-    case ASID_CMD_LOAD_BUFFER:                                                 \
-      loadbuffer = bufferaddr;                                                 \
-      expected_data = DATA_LOAD;                                               \
-      break;                                                                   \
     case ASID_CMD_LOAD_RECT_BUFFER:                                            \
       loadbuffer = bufferaddr;                                                 \
       expected_data = DATA_RECT_LOAD;                                          \
       rowloadbuffer = loadbuffer;                                              \
       col = rectconfig.size;                                                   \
       break;                                                                   \
+    case ASID_CMD_LOAD_BUFFER:                                                 \
+      loadbuffer = bufferaddr;                                                 \
+      break;                                                                   \
     case ASID_CMD_ADDR_BUFFER:                                                 \
       loadbuffer = (unsigned char *)&bufferaddr;                               \
-      expected_data = DATA_LOAD;                                               \
       break;                                                                   \
     case ASID_CMD_ADDR_RECT_BUFFER:                                            \
       loadbuffer = (unsigned char *)&rectconfig;                               \
-      expected_data = DATA_LOAD;                                               \
       break;                                                                   \
     case ASID_CMD_FILL_BUFFER:                                                 \
       loadbuffer = (unsigned char *)&fillconfig;                               \
-      expected_data = DATA_LOAD;                                               \
       break;                                                                   \
     case ASID_CMD_FILL_RECT_BUFFER:                                            \
       loadbuffer = (unsigned char *)&fillconfig;                               \
-      expected_data = DATA_LOAD;                                               \
+      break;                                                                   \
+    case ASID_CMD_COPY_BUFFER:                                                 \
+      loadbuffer = (unsigned char *)&copyconfig;                               \
+      break;                                                                   \
+    case ASID_CMD_COPY_RECT_BUFFER:                                            \
+      loadbuffer = (unsigned char *)&copyconfig;                               \
       break;                                                                   \
     default:                                                                   \
       expected_data = DATA_ANY;                                                \
