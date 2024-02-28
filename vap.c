@@ -54,6 +54,8 @@ enum ASID_CMD {
   ASID_CMD_FILL_RECT_BUFFER,
   ASID_CMD_COPY_BUFFER,
   ASID_CMD_COPY_RECT_BUFFER,
+  ASID_CMD_REU_STASH_BUFFER,
+  ASID_CMD_REU_FETCH_BUFFER,
 };
 
 enum EXPECTED_DATA {
@@ -220,6 +222,12 @@ void init(void) {
   case ASID_CMD_COPY_RECT_BUFFER:                                              \
     HANDLE_COPY_RECT_BUFFER;                                                   \
     break;                                                                     \
+  case ASID_CMD_REU_STASH_BUFFER:                                              \
+    *REU_COMMAND = 0b10010000;                                                 \
+    break;                                                                     \
+  case ASID_CMD_REU_FETCH_BUFFER:                                              \
+    *REU_COMMAND = 0b10010001;                                                 \
+    break;                                                                     \
   case ASID_CMD_START:                                                         \
     initsid();                                                                 \
     break;                                                                     \
@@ -295,6 +303,11 @@ void init(void) {
 
 #define HANDLE_COPY_RECT_BUFFER HANDLE_COPY_BUFFER(RECT_INIT, RECT_SKIP)
 
+#define REU_COMMAND ((unsigned char *)0xdf01)
+#define REU_HOST_BASE ((unsigned char *)0xdf02)
+#define REU_ADDR_BASE ((unsigned char *)0xdf04)
+#define REU_CONTROL ((unsigned char *)0xdf0a)
+
 #define HANDLE_MIDI_DATA                                                       \
   switch (expected_data) {                                                     \
   case DATA_LOAD:                                                              \
@@ -332,16 +345,18 @@ void init(void) {
       loadbuffer = (unsigned char *)&rectconfig;                               \
       break;                                                                   \
     case ASID_CMD_FILL_BUFFER:                                                 \
-      loadbuffer = (unsigned char *)&fillconfig;                               \
-      break;                                                                   \
     case ASID_CMD_FILL_RECT_BUFFER:                                            \
       loadbuffer = (unsigned char *)&fillconfig;                               \
       break;                                                                   \
     case ASID_CMD_COPY_BUFFER:                                                 \
-      loadbuffer = (unsigned char *)&copyconfig;                               \
-      break;                                                                   \
     case ASID_CMD_COPY_RECT_BUFFER:                                            \
       loadbuffer = (unsigned char *)&copyconfig;                               \
+      break;                                                                   \
+    case ASID_CMD_REU_STASH_BUFFER:                                            \
+    case ASID_CMD_REU_FETCH_BUFFER:                                            \
+      loadbuffer = REU_ADDR_BASE;                                              \
+      *REU_CONTROL = 0;                                                        \
+      *(uint16_t *)REU_HOST_BASE = (uint16_t)bufferaddr;                       \
       break;                                                                   \
     default:                                                                   \
       expected_data = DATA_ANY;                                                \
