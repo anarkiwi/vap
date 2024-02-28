@@ -332,8 +332,7 @@ void init(void) {
     case ASID_CMD_LOAD_RECT_BUFFER:                                            \
       loadbuffer = bufferaddr;                                                 \
       expected_data = DATA_RECT_LOAD;                                          \
-      rowloadbuffer = loadbuffer;                                              \
-      col = rectconfig.size;                                                   \
+      RECT_INIT                                                                \
       break;                                                                   \
     case ASID_CMD_LOAD_BUFFER:                                                 \
       loadbuffer = bufferaddr;                                                 \
