@@ -56,6 +56,8 @@ enum ASID_CMD {
   ASID_CMD_COPY_RECT_BUFFER,
   ASID_CMD_REU_STASH_BUFFER,
   ASID_CMD_REU_FETCH_BUFFER,
+  // TODO: REU fill (with fixed address control).
+  // TODO: REU fetch to rectangle.
 };
 
 enum EXPECTED_DATA {
