@@ -18,25 +18,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#define PORTA ((unsigned char *)0xdd00)
-#define PORTB ((unsigned char *)0xdd01)
-#define PORTB_DDR ((unsigned char *)0xdd03)
-
-#define SBIT(x) (x & 0b01111111)
+#define PORTA (*((volatile unsigned char *)0xdd00))
+#define PORTB (*((volatile unsigned char *)0xdd01))
+#define PORTB_DDR (*((volatile unsigned char *)0xdd03))
 
 #define VOUT                                                                   \
   {                                                                            \
-    *PORTA |= 0b00000100;                                                      \
-    *PORTB_DDR = 0xff;                                                         \
+    PORTA |= 0b00000100;                                                      \
+    PORTB_DDR = 0xff;                                                         \
   }
 #define VIN                                                                    \
   {                                                                            \
-    *PORTA &= 0b11111011;                                                      \
-    *PORTB_DDR = 0x00;                                                         \
+    PORTA &= 0b11111011;                                                      \
+    PORTB_DDR = 0x00;                                                         \
   }
-#define VW(x) *PORTB = x
-#define VR *PORTB
-#define VR7 SBIT(VR)
+#define VW(x) PORTB = x
+#define VR PORTB
 #define VCMD(cmd)                                                              \
   {                                                                            \
     VW(0xfd);                                                                  \
