@@ -24,9 +24,11 @@
 #include <stdio.h>
 #include <string.h>
 
+const char VAP_VERSION[] = "VAP" VERSION;
+
 #define CLOCK_ACK VW(0xF8)
 
-#define RUN_BUFFER 0x0400
+#define RUN_BUFFER 0xc000
 #define REU_COMMAND (*((volatile unsigned char *)0xdf01))
 #define REU_CONTROL (*((volatile unsigned char *)0xdf0a))
 #define REU_HOST_BASE ((volatile unsigned char *)0xdf02)
@@ -44,31 +46,23 @@
 
 enum ASID_CMD {
   ASID_CMD_START = 0x4c,
-  ASID_CMD_STOP,
-  ASID_CMD_UPDATE,
+  ASID_CMD_STOP = 0x4d,
+  ASID_CMD_UPDATE = 0x4e,
   ASID_CMD_UPDATE2 = 0x50,
-  ASID_CMD_UPDATE_BOTH,
-  ASID_CMD_RUN_BUFFER,
-  ASID_CMD_LOAD_BUFFER,
-  ASID_CMD_ADDR_BUFFER,
-  ASID_CMD_LOAD_RECT_BUFFER,
-  ASID_CMD_ADDR_RECT_BUFFER,
-  ASID_CMD_FILL_BUFFER,
-  ASID_CMD_FILL_RECT_BUFFER,
-  ASID_CMD_COPY_BUFFER,
-  ASID_CMD_COPY_RECT_BUFFER,
-  ASID_CMD_REU_STASH_BUFFER,
-  ASID_CMD_REU_FETCH_BUFFER,
+  ASID_CMD_UPDATE_BOTH = 0x51,
+  ASID_CMD_RUN_BUFFER = 0x52,
+  ASID_CMD_LOAD_BUFFER = 0x53,
+  ASID_CMD_ADDR_BUFFER = 0x54,
+  ASID_CMD_LOAD_RECT_BUFFER = 0x55,
+  ASID_CMD_ADDR_RECT_BUFFER = 0x56,
+  ASID_CMD_FILL_BUFFER = 0x57,
+  ASID_CMD_FILL_RECT_BUFFER = 0x58,
+  ASID_CMD_COPY_BUFFER = 0x59,
+  ASID_CMD_COPY_RECT_BUFFER = 0x5a,
+  ASID_CMD_REU_STASH_BUFFER = 0x5b,
+  ASID_CMD_REU_FETCH_BUFFER = 0x5c,
   // TODO: REU fill (with fixed address control).
   // TODO: REU fetch to rectangle.
-};
-
-enum EXPECTED_DATA {
-  DATA_ANY = 0,
-  DATA_MANID,
-  DATA_CMD,
-  DATA_LOAD,
-  DATA_RECT_LOAD,
 };
 
 struct {
@@ -87,7 +81,6 @@ struct {
   uint16_t count;
 } copyconfig;
 
-unsigned char expected_data = DATA_ANY;
 unsigned char buf[256] = {};
 unsigned char cmd = 0;
 unsigned char flagp = 0;
@@ -109,6 +102,11 @@ uint16_t j = 0;
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
 volatile unsigned char *loadbuffer = 0;
 volatile unsigned char *rowloadbuffer = 0;
+
+void noop() {}
+
+void (*datahandler)(void) = &noop;
+void (*stophandler)(void) = &noop;
 
 const unsigned char regidmap[] = {
     0, // ID 0
@@ -144,33 +142,6 @@ const unsigned char regidmap[] = {
     18, // ID 27
 };
 
-void initvessel(void) {
-  VOUT;
-  VRESET;
-  VIN;
-  VOUT;
-  VCMD(4); // config passthrough
-  VW(4);
-}
-
-void initsid(void) {
-  for (i = 0; i < SIDREGSIZE; ++i) {
-    SIDBASE[i] = 0;
-    SIDBASE2[i] = 0;
-  }
-}
-
-void init(void) {
-  asm("jsr $e544"); // clear screen
-  initsid();
-  initvessel();
-  memset(&rectconfig, 0, sizeof(rectconfig));
-  memset(&fillconfig, 0, sizeof(fillconfig));
-  memset(&copyconfig, 0, sizeof(copyconfig));
-  printf("VAP" VERSION);
-  SEI();
-}
-
 #define REGMASK(base, mask, regid)                                             \
   if (regidflags & mask) {                                                     \
     val = buf[lsbp++];                                                         \
@@ -201,62 +172,6 @@ void init(void) {
   BYTEREG(base, 7);                                                            \
   BYTEREG(base, 14);                                                           \
   BYTEREG(base, 21);
-
-#define HANDLE_ASID_CMD                                                        \
-  switch (cmd) {                                                               \
-  case ASID_CMD_UPDATE:                                                        \
-    UPDATESID(SIDBASE);                                                        \
-    break;                                                                     \
-  case ASID_CMD_UPDATE2:                                                       \
-    UPDATESID(SIDBASE2);                                                       \
-    break;                                                                     \
-  case ASID_CMD_UPDATE_BOTH:                                                   \
-    UPDATESID(SIDBASE);                                                        \
-    UPDATESID(SIDBASE2);                                                       \
-    break;                                                                     \
-  case ASID_CMD_RUN_BUFFER:                                                    \
-    indirect();                                                                \
-    break;                                                                     \
-  case ASID_CMD_FILL_BUFFER:                                                   \
-    HANDLE_FILL_BUFFER(, );                                                    \
-    break;                                                                     \
-  case ASID_CMD_FILL_RECT_BUFFER:                                              \
-    HANDLE_FILL_RECT_BUFFER;                                                   \
-    break;                                                                     \
-  case ASID_CMD_COPY_BUFFER:                                                   \
-    HANDLE_COPY_BUFFER(, );                                                    \
-    break;                                                                     \
-  case ASID_CMD_COPY_RECT_BUFFER:                                              \
-    HANDLE_COPY_RECT_BUFFER;                                                   \
-    break;                                                                     \
-  case ASID_CMD_REU_STASH_BUFFER:                                              \
-    REU_COMMAND = 0b10010000;                                                 \
-    break;                                                                     \
-  case ASID_CMD_REU_FETCH_BUFFER:                                              \
-    REU_COMMAND = 0b10010001;                                                 \
-    break;                                                                     \
-  case ASID_CMD_START:                                                         \
-    initsid();                                                                 \
-    break;                                                                     \
-  case ASID_CMD_STOP:                                                          \
-    initsid();                                                                 \
-    break;                                                                     \
-  }
-
-#define HANDLE_MIDI_CMD                                                        \
-  switch (ch) {                                                                \
-  case SYSEX_STOP:                                                             \
-    if (cmd) {                                                                 \
-      HANDLE_ASID_CMD;                                                         \
-      CLOCK_ACK;                                                               \
-    }                                                                          \
-    cmd = 0;                                                                   \
-    expected_data = DATA_ANY;                                                  \
-    break;                                                                     \
-  case SYSEX_START:                                                            \
-    expected_data = DATA_MANID;                                                \
-    break;                                                                     \
-  }
 
 #define HANDLE_LOAD(x)                                                         \
   if (loadmsb) {                                                               \
@@ -310,64 +225,398 @@ void init(void) {
 
 #define HANDLE_COPY_RECT_BUFFER HANDLE_COPY_BUFFER(RECT_INIT, RECT_SKIP)
 
-#define HANDLE_MIDI_DATA                                                       \
-  switch (expected_data) {                                                     \
-  case DATA_LOAD:                                                              \
-    HANDLE_LOAD();                                                             \
-    break;                                                                     \
-  case DATA_RECT_LOAD:                                                         \
-    HANDLE_RECT_LOAD;                                                          \
-    break;                                                                     \
-  case DATA_MANID:                                                             \
-    if (ch == ASID_MANID) {                                                    \
-      expected_data = DATA_CMD;                                                \
-    } else {                                                                   \
-      expected_data = DATA_ANY;                                                \
-    }                                                                          \
-    break;                                                                     \
-  case DATA_CMD:                                                               \
-    cmd = ch;                                                                  \
-    cmdp = readp;                                                              \
-    loadmsb = 0;                                                               \
-    expected_data = DATA_LOAD;                                                 \
-    switch (cmd) {                                                             \
-    case ASID_CMD_LOAD_RECT_BUFFER:                                            \
-      loadbuffer = bufferaddr;                                                 \
-      expected_data = DATA_RECT_LOAD;                                          \
-      RECT_INIT                                                                \
-      break;                                                                   \
-    case ASID_CMD_LOAD_BUFFER:                                                 \
-      loadbuffer = bufferaddr;                                                 \
-      break;                                                                   \
-    case ASID_CMD_ADDR_BUFFER:                                                 \
-      loadbuffer = (unsigned char *)&bufferaddr;                               \
-      break;                                                                   \
-    case ASID_CMD_ADDR_RECT_BUFFER:                                            \
-      loadbuffer = (unsigned char *)&rectconfig;                               \
-      break;                                                                   \
-    case ASID_CMD_FILL_BUFFER:                                                 \
-    case ASID_CMD_FILL_RECT_BUFFER:                                            \
-      loadbuffer = (unsigned char *)&fillconfig;                               \
-      break;                                                                   \
-    case ASID_CMD_COPY_BUFFER:                                                 \
-    case ASID_CMD_COPY_RECT_BUFFER:                                            \
-      loadbuffer = (unsigned char *)&copyconfig;                               \
-      break;                                                                   \
-    case ASID_CMD_REU_STASH_BUFFER:                                            \
-    case ASID_CMD_REU_FETCH_BUFFER:                                            \
-      loadbuffer = REU_ADDR_BASE;                                              \
-      REU_CONTROL = 0;                                                        \
-      *(uint16_t *)REU_HOST_BASE = (uint16_t)bufferaddr;                       \
-      break;                                                                   \
-    default:                                                                   \
-      expected_data = DATA_ANY;                                                \
-    }                                                                          \
-    break;                                                                     \
-  default:                                                                     \
-    expected_data = DATA_ANY;                                                  \
+void (*const asidstopcmdhandler[])(void);
+
+void asidstop() {
+  (*asidstopcmdhandler[cmd])();
+  CLOCK_ACK;
+  datahandler = &noop;
+  stophandler = &noop;
+}
+
+void setasidstop() { stophandler = &asidstop; }
+
+void initsid(void) {
+  for (i = 0; i < SIDREGSIZE; ++i) {
+    SIDBASE[i] = 0;
+    SIDBASE2[i] = 0;
   }
+}
 
 void indirect(void) { asm("jmp (bufferaddr)"); }
+
+void updatesid() { UPDATESID(SIDBASE); }
+
+void updatesid2() { UPDATESID(SIDBASE2); }
+
+void updatebothsid() {
+  updatesid();
+  updatesid2();
+}
+
+void fillbuffer() { HANDLE_FILL_BUFFER(, ); }
+
+void fillrectbuffer() { HANDLE_FILL_RECT_BUFFER; }
+
+void copybuffer() { HANDLE_COPY_BUFFER(, ); }
+
+void copyrectbuffer() { HANDLE_COPY_RECT_BUFFER; }
+
+void reustash() { REU_COMMAND = 0b10010000; }
+
+void reufetch() { REU_COMMAND = 0b10010001; }
+
+void handle_load() { HANDLE_LOAD(); }
+
+void handle_rect_load() { HANDLE_RECT_LOAD; }
+
+void start_handle_load() {
+  datahandler = &handle_load;
+  loadbuffer = bufferaddr;
+  setasidstop();
+}
+
+void start_handle_load_rect() {
+  datahandler = &handle_load;
+  loadbuffer = bufferaddr;
+  datahandler = &handle_rect_load;
+  RECT_INIT
+  setasidstop();
+}
+
+void start_handle_addr() {
+  datahandler = &handle_load;
+  loadbuffer = (unsigned char *)&bufferaddr;
+  setasidstop();
+}
+
+void start_handle_addr_rect() {
+  datahandler = &handle_load;
+  loadbuffer = (unsigned char *)&rectconfig;
+  setasidstop();
+}
+
+void start_handle_reu() {
+  datahandler = &handle_load;
+  loadbuffer = REU_ADDR_BASE;
+  REU_CONTROL = 0;
+  *(uint16_t *)REU_HOST_BASE = (uint16_t)bufferaddr;
+  setasidstop();
+}
+
+void start_handle_copy() {
+  datahandler = &handle_load;
+  loadbuffer = (unsigned char *)&copyconfig;
+  setasidstop();
+}
+
+void start_handle_fill() {
+  datahandler = &handle_load;
+  loadbuffer = (unsigned char *)&fillconfig;
+  setasidstop();
+}
+
+void (*const asidstartcmdhandler[])(void) = {
+    &noop,                   // 0
+    &noop,                   // 1
+    &noop,                   // 2
+    &noop,                   // 3
+    &noop,                   // 4
+    &noop,                   // 5
+    &noop,                   // 6
+    &noop,                   // 7
+    &noop,                   // 8
+    &noop,                   // 9
+    &noop,                   // a
+    &noop,                   // b
+    &noop,                   // c
+    &noop,                   // d
+    &noop,                   // e
+    &noop,                   // f
+    &noop,                   // 10
+    &noop,                   // 11
+    &noop,                   // 12
+    &noop,                   // 13
+    &noop,                   // 14
+    &noop,                   // 15
+    &noop,                   // 16
+    &noop,                   // 17
+    &noop,                   // 18
+    &noop,                   // 19
+    &noop,                   // 1a
+    &noop,                   // 1b
+    &noop,                   // 1c
+    &noop,                   // 1d
+    &noop,                   // 1e
+    &noop,                   // 1f
+    &noop,                   // 20
+    &noop,                   // 21
+    &noop,                   // 22
+    &noop,                   // 23
+    &noop,                   // 24
+    &noop,                   // 25
+    &noop,                   // 26
+    &noop,                   // 27
+    &noop,                   // 28
+    &noop,                   // 29
+    &noop,                   // 2a
+    &noop,                   // 2b
+    &noop,                   // 2c
+    &noop,                   // 2d
+    &noop,                   // 2e
+    &noop,                   // 2f
+    &noop,                   // 30
+    &noop,                   // 31
+    &noop,                   // 32
+    &noop,                   // 33
+    &noop,                   // 34
+    &noop,                   // 35
+    &noop,                   // 36
+    &noop,                   // 37
+    &noop,                   // 38
+    &noop,                   // 39
+    &noop,                   // 3a
+    &noop,                   // 3b
+    &noop,                   // 3c
+    &noop,                   // 3d
+    &noop,                   // 3e
+    &noop,                   // 3f
+    &noop,                   // 40
+    &noop,                   // 41
+    &noop,                   // 42
+    &noop,                   // 43
+    &noop,                   // 44
+    &noop,                   // 45
+    &noop,                   // 46
+    &noop,                   // 47
+    &noop,                   // 48
+    &noop,                   // 49
+    &noop,                   // 4a
+    &noop,                   // 4b
+    &setasidstop,            // 4c ASID_CMD_START
+    &setasidstop,            // 4d ASID_CMD_STOP
+    &setasidstop,            // 4e ASID_CMD_UPDATE
+    &noop,                   // 4f
+    &setasidstop,            // 50 ASID_CMD_UPDATE2
+    &setasidstop,            // 51 ASID_CMD_UPDATE_BOTH
+    &setasidstop,            // 52 ASID_CMD_RUN_BUFFER
+    &start_handle_load,      // 53 ASID_CMD_LOAD_BUFFER
+    &start_handle_addr,      // 54 ASID_CMD_ADDR_BUFFER
+    &start_handle_load_rect, // 55 ASID_CMD_LOAD_RECT_BUFFER
+    &start_handle_addr_rect, // 56 ASID_CMD_ADDR_RECT_BUFFER
+    &start_handle_fill,      // 57 ASID_CMD_FILL_BUFFER
+    &start_handle_fill,      // 58 ASID_CMD_FILL_RECT_BUFFER
+    &start_handle_copy,      // 59 ASID_CMD_COPY_BUFFER
+    &start_handle_copy,      // 5a ASID_CMD_COPY_RECT_BUFFER
+    &start_handle_reu,       // 5b ASID_CMD_REU_STASH_BUFFER
+    &start_handle_reu,       // 5c ASID_CMD_REU_FETCH_BUFFER
+    &noop,                   // 5d
+    &noop,                   // 5e
+    &noop,                   // 5f
+    &noop,                   // 60
+    &noop,                   // 61
+    &noop,                   // 62
+    &noop,                   // 63
+    &noop,                   // 64
+    &noop,                   // 65
+    &noop,                   // 66
+    &noop,                   // 67
+    &noop,                   // 68
+    &noop,                   // 69
+    &noop,                   // 6a
+    &noop,                   // 6b
+    &noop,                   // 6c
+    &noop,                   // 6d
+    &noop,                   // 6e
+    &noop,                   // 6f
+    &noop,                   // 70
+    &noop,                   // 71
+    &noop,                   // 72
+    &noop,                   // 73
+    &noop,                   // 74
+    &noop,                   // 75
+    &noop,                   // 76
+    &noop,                   // 77
+    &noop,                   // 78
+    &noop,                   // 79
+    &noop,                   // 7a
+    &noop,                   // 7b
+    &noop,                   // 7c
+    &noop,                   // 7d
+    &noop,                   // 7e
+    &noop,                   // 7f
+};
+
+void (*const asidstopcmdhandler[])(void) = {
+    &noop,           // 0
+    &noop,           // 1
+    &noop,           // 2
+    &noop,           // 3
+    &noop,           // 4
+    &noop,           // 5
+    &noop,           // 6
+    &noop,           // 7
+    &noop,           // 8
+    &noop,           // 9
+    &noop,           // a
+    &noop,           // b
+    &noop,           // c
+    &noop,           // d
+    &noop,           // e
+    &noop,           // f
+    &noop,           // 10
+    &noop,           // 11
+    &noop,           // 12
+    &noop,           // 13
+    &noop,           // 14
+    &noop,           // 15
+    &noop,           // 16
+    &noop,           // 17
+    &noop,           // 18
+    &noop,           // 19
+    &noop,           // 1a
+    &noop,           // 1b
+    &noop,           // 1c
+    &noop,           // 1d
+    &noop,           // 1e
+    &noop,           // 1f
+    &noop,           // 20
+    &noop,           // 21
+    &noop,           // 22
+    &noop,           // 23
+    &noop,           // 24
+    &noop,           // 25
+    &noop,           // 26
+    &noop,           // 27
+    &noop,           // 28
+    &noop,           // 29
+    &noop,           // 2a
+    &noop,           // 2b
+    &noop,           // 2c
+    &noop,           // 2d
+    &noop,           // 2e
+    &noop,           // 2f
+    &noop,           // 30
+    &noop,           // 31
+    &noop,           // 32
+    &noop,           // 33
+    &noop,           // 34
+    &noop,           // 35
+    &noop,           // 36
+    &noop,           // 37
+    &noop,           // 38
+    &noop,           // 39
+    &noop,           // 3a
+    &noop,           // 3b
+    &noop,           // 3c
+    &noop,           // 3d
+    &noop,           // 3e
+    &noop,           // 3f
+    &noop,           // 40
+    &noop,           // 41
+    &noop,           // 42
+    &noop,           // 43
+    &noop,           // 44
+    &noop,           // 45
+    &noop,           // 46
+    &noop,           // 47
+    &noop,           // 48
+    &noop,           // 49
+    &noop,           // 4a
+    &noop,           // 4b
+    &initsid,        // 4c ASID_CMD_START
+    &initsid,        // 4d ASID_CMD_STOP
+    &updatesid,      // 4e ASID_CMD_UPDATE
+    &noop,           // 4f
+    &updatesid2,     // 50 ASID_CMD_UPDATE2
+    &updatebothsid,  // 51 ASID_CMD_UPDATE_BOTH
+    &indirect,       // 52 ASID_CMD_RUN_BUFFER
+    &noop,           // 53 ASID_CMD_LOAD_BUFFER
+    &noop,           // 54 ASID_CMD_ADDR_BUFFER
+    &noop,           // 55 ASID_CMD_LOAD_RECT_BUFFER
+    &noop,           // 56 ASID_CMD_ADDR_RECT_BUFFER
+    &fillbuffer,     // 57 ASID_CMD_FILL_BUFFER
+    &fillrectbuffer, // 58 ASID_CMD_FILL_RECT_BUFFER
+    &copybuffer,     // 59 ASID_CMD_COPY_BUFFER
+    &copyrectbuffer, // 5a ASID_CMD_COPY_RECT_BUFFER
+    &reustash,       // 5b ASID_CMD_REU_STASH_BUFFER
+    &reufetch,       // 5c ASID_CMD_REU_FETCH_BUFFER
+    &noop,           // 5d
+    &noop,           // 5e
+    &noop,           // 5f
+    &noop,           // 60
+    &noop,           // 61
+    &noop,           // 62
+    &noop,           // 63
+    &noop,           // 64
+    &noop,           // 65
+    &noop,           // 66
+    &noop,           // 67
+    &noop,           // 68
+    &noop,           // 69
+    &noop,           // 6a
+    &noop,           // 6b
+    &noop,           // 6c
+    &noop,           // 6d
+    &noop,           // 6e
+    &noop,           // 6f
+    &noop,           // 70
+    &noop,           // 71
+    &noop,           // 72
+    &noop,           // 73
+    &noop,           // 74
+    &noop,           // 75
+    &noop,           // 76
+    &noop,           // 77
+    &noop,           // 78
+    &noop,           // 79
+    &noop,           // 7a
+    &noop,           // 7b
+    &noop,           // 7c
+    &noop,           // 7d
+    &noop,           // 7e
+    &noop,           // 7f
+};
+
+void initvessel(void) {
+  VOUT;
+  VRESET;
+  VIN;
+  VOUT;
+  VCMD(4); // config passthrough
+  VW(4);
+}
+
+void init(void) {
+  asm("jsr $e544"); // clear screen
+  initsid();
+  initvessel();
+  memset(&rectconfig, 0, sizeof(rectconfig));
+  memset(&fillconfig, 0, sizeof(fillconfig));
+  memset(&copyconfig, 0, sizeof(copyconfig));
+  const char *c = VAP_VERSION;
+  while (*c) {
+    putchar(*c++);
+  }
+  SEI();
+}
+
+void handle_cmd() {
+  cmd = ch;
+  cmdp = readp;
+  loadmsb = 0;
+  datahandler = &noop;
+  stophandler = &noop;
+  (*asidstartcmdhandler[cmd])();
+}
+
+void handle_manid() {
+  if (ch == ASID_MANID) {
+    datahandler = &handle_cmd;
+  } else {
+    datahandler = &noop;
+  }
+}
 
 void midiloop(void) {
   for (;;) {
@@ -379,9 +628,16 @@ void midiloop(void) {
     while (writep != readp) {
       ch = buf[++readp];
       if (ch & 0x80) {
-        HANDLE_MIDI_CMD;
-      } else if (expected_data) {
-        HANDLE_MIDI_DATA;
+        switch (ch) {
+        case SYSEX_STOP:
+          (*stophandler)();
+          break;
+        case SYSEX_START:
+          datahandler = &handle_manid;
+          break;
+        }
+      } else {
+        datahandler();
       }
     }
   }
