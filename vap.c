@@ -20,7 +20,6 @@
 
 #include "vessel.h"
 #include <6502.h>
-#include <conio.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -28,11 +27,15 @@
 #define CLOCK_ACK VW(0xF8)
 
 #define RUN_BUFFER 0x0400
-#define VICII ((unsigned char *)0xd011)
-#define SCREENMEM ((unsigned char *)0x0400)
-#define BORDERCOLOR ((unsigned char *)0xd020)
-#define SIDBASE ((unsigned char *)0xd400)
-#define SIDBASE2 ((unsigned char *)0xd420)
+#define REU_COMMAND (*((volatile unsigned char *)0xdf01))
+#define REU_CONTROL (*((volatile unsigned char *)0xdf0a))
+#define REU_HOST_BASE ((volatile unsigned char *)0xdf02)
+#define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
+#define VICII ((volatile unsigned char *)0xd011)
+#define SCREENMEM ((volatile unsigned char *)0x0400)
+#define BORDERCOLOR ((volatile unsigned char *)0xd020)
+#define SIDBASE ((volatile unsigned char *)0xd400)
+#define SIDBASE2 ((volatile unsigned char *)0xd420)
 #define SIDREGSIZE 28
 
 #define SYSEX_START 0xf0
@@ -99,12 +102,13 @@ unsigned char cmdp = 0;
 unsigned char ch = 0;
 unsigned char i = 0;
 unsigned char loadmsb = 0;
-unsigned char *bufferaddr = (unsigned char *)RUN_BUFFER;
-unsigned char *loadbuffer = 0;
 unsigned char loadmask = 0;
-unsigned char *rowloadbuffer = 0;
 unsigned char col = 0;
 uint16_t j = 0;
+
+volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
+volatile unsigned char *loadbuffer = 0;
+volatile unsigned char *rowloadbuffer = 0;
 
 const unsigned char regidmap[] = {
     0, // ID 0
@@ -142,7 +146,9 @@ const unsigned char regidmap[] = {
 
 void initvessel(void) {
   VOUT;
-  VCMD(0); // reset
+  VRESET;
+  VIN;
+  VOUT;
   VCMD(4); // config passthrough
   VW(4);
 }
@@ -155,14 +161,13 @@ void initsid(void) {
 }
 
 void init(void) {
+  asm("jsr $e544"); // clear screen
   initsid();
   initvessel();
-  clrscr();
-  bzero(&rectconfig, sizeof(rectconfig));
-  bzero(&fillconfig, sizeof(fillconfig));
-  bzero(&copyconfig, sizeof(copyconfig));
-  cputs("VAP");
-  cputs(VERSION);
+  memset(&rectconfig, 0, sizeof(rectconfig));
+  memset(&fillconfig, 0, sizeof(fillconfig));
+  memset(&copyconfig, 0, sizeof(copyconfig));
+  printf("VAP" VERSION);
   SEI();
 }
 
@@ -225,10 +230,10 @@ void init(void) {
     HANDLE_COPY_RECT_BUFFER;                                                   \
     break;                                                                     \
   case ASID_CMD_REU_STASH_BUFFER:                                              \
-    *REU_COMMAND = 0b10010000;                                                 \
+    REU_COMMAND = 0b10010000;                                                 \
     break;                                                                     \
   case ASID_CMD_REU_FETCH_BUFFER:                                              \
-    *REU_COMMAND = 0b10010001;                                                 \
+    REU_COMMAND = 0b10010001;                                                 \
     break;                                                                     \
   case ASID_CMD_START:                                                         \
     initsid();                                                                 \
@@ -305,11 +310,6 @@ void init(void) {
 
 #define HANDLE_COPY_RECT_BUFFER HANDLE_COPY_BUFFER(RECT_INIT, RECT_SKIP)
 
-#define REU_COMMAND ((unsigned char *)0xdf01)
-#define REU_HOST_BASE ((unsigned char *)0xdf02)
-#define REU_ADDR_BASE ((unsigned char *)0xdf04)
-#define REU_CONTROL ((unsigned char *)0xdf0a)
-
 #define HANDLE_MIDI_DATA                                                       \
   switch (expected_data) {                                                     \
   case DATA_LOAD:                                                              \
@@ -356,7 +356,7 @@ void init(void) {
     case ASID_CMD_REU_STASH_BUFFER:                                            \
     case ASID_CMD_REU_FETCH_BUFFER:                                            \
       loadbuffer = REU_ADDR_BASE;                                              \
-      *REU_CONTROL = 0;                                                        \
+      REU_CONTROL = 0;                                                        \
       *(uint16_t *)REU_HOST_BASE = (uint16_t)bufferaddr;                       \
       break;                                                                   \
     default:                                                                   \
@@ -367,7 +367,7 @@ void init(void) {
     expected_data = DATA_ANY;                                                  \
   }
 
-void indirect(void) { __asm__("jmp (%v)", bufferaddr); }
+void indirect(void) { asm("jmp (bufferaddr)"); }
 
 void midiloop(void) {
   for (;;) {
@@ -387,7 +387,8 @@ void midiloop(void) {
   }
 }
 
-void main(void) {
+int main(void) {
   init();
   midiloop();
+  return 0;
 }
