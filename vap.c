@@ -61,7 +61,7 @@ enum ASID_CMD {
   ASID_CMD_COPY_RECT_BUFFER = 0x5a,
   ASID_CMD_REU_STASH_BUFFER = 0x5b,
   ASID_CMD_REU_FETCH_BUFFER = 0x5c,
-  // TODO: REU fill (with fixed address control).
+  ASID_CMD_REU_FILL_BUFFER = 0x5d,
   // TODO: REU fetch to rectangle.
 };
 
@@ -296,12 +296,20 @@ void start_handle_addr_rect() {
   setasidstop();
 }
 
-void start_handle_reu() {
+inline void start_reu(uint8_t control) {
   datahandler = &handle_load;
   loadbuffer = REU_ADDR_BASE;
-  REU_CONTROL = 0;
+  REU_CONTROL = control;
   *(uint16_t *)REU_HOST_BASE = (uint16_t)bufferaddr;
   setasidstop();
+}
+
+void start_handle_reu() {
+  start_reu(0);
+}
+
+void start_handle_reu_fill() {
+  start_reu(0x40); // REU address is fixed.
 }
 
 void start_handle_copy() {
@@ -410,7 +418,7 @@ void (*const asidstartcmdhandler[])(void) = {
     &start_handle_copy,      // 5a ASID_CMD_COPY_RECT_BUFFER
     &start_handle_reu,       // 5b ASID_CMD_REU_STASH_BUFFER
     &start_handle_reu,       // 5c ASID_CMD_REU_FETCH_BUFFER
-    &noop,                   // 5d
+    &start_handle_reu_fill,  // 5d ASID_CMD_REU_FILL_BUFFER
     &noop,                   // 5e
     &noop,                   // 5f
     &noop,                   // 60
@@ -541,7 +549,7 @@ void (*const asidstopcmdhandler[])(void) = {
     &copyrectbuffer, // 5a ASID_CMD_COPY_RECT_BUFFER
     &reustash,       // 5b ASID_CMD_REU_STASH_BUFFER
     &reufetch,       // 5c ASID_CMD_REU_FETCH_BUFFER
-    &noop,           // 5d
+    &reufetch,       // 5d ASID_CMD_REU_FILL_BUFFER
     &noop,           // 5e
     &noop,           // 5f
     &noop,           // 60
