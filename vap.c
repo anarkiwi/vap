@@ -33,6 +33,7 @@ const char VAP_VERSION[] = "VAP" VERSION;
 #define REU_CONTROL (*((volatile unsigned char *)0xdf0a))
 #define REU_HOST_BASE ((volatile unsigned char *)0xdf02)
 #define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
+#define REU_TRANSFER_LEN ((volatile unsigned char *)0xdf07)
 #define VICII ((volatile unsigned char *)0xd011)
 #define SCREENMEM ((volatile unsigned char *)0x0400)
 #define BORDERCOLOR ((volatile unsigned char *)0xd020)
@@ -62,13 +63,14 @@ enum ASID_CMD {
   ASID_CMD_REU_STASH_BUFFER = 0x5b,
   ASID_CMD_REU_FETCH_BUFFER = 0x5c,
   ASID_CMD_REU_FILL_BUFFER = 0x5d,
+  ASID_CMD_REU_STASH_BUFFER_RECT = 0x5e,
   // TODO: REU fetch to rectangle.
 };
 
 struct {
-  unsigned char start;
-  unsigned char size;
-  unsigned char inc;
+  unsigned char start; // number of positions to skip to new row (e.g. 40)
+  unsigned char size;  // size of a row
+  unsigned char inc;   // number of rows to increment
 } rectconfig;
 
 struct {
@@ -173,57 +175,84 @@ const unsigned char regidmap[] = {
   BYTEREG(base, 14);                                                           \
   BYTEREG(base, 21);
 
-#define HANDLE_LOAD(x)                                                         \
-  if (loadmsb) {                                                               \
-    if (loadmask & 0x01) {                                                     \
-      ch |= 0x80;                                                              \
-    }                                                                          \
-    loadmask >>= 1;                                                            \
-    *loadbuffer = ch;                                                          \
-    ++loadbuffer;                                                              \
-    --loadmsb;                                                                 \
-    x                                                                          \
-  } else {                                                                     \
-    loadmsb = 7;                                                               \
-    loadmask = ch;                                                             \
+inline void rect_skip() {
+  if (!--col) {
+    col = rectconfig.inc;
+    while (col--) {
+      rowloadbuffer += rectconfig.start;
+    }
+    col = rectconfig.size;
+    loadbuffer = rowloadbuffer;
   }
+}
 
-#define RECT_SKIP                                                              \
-  if (!--col) {                                                                \
-    col = rectconfig.inc;                                                      \
-    while (col--) {                                                            \
-      rowloadbuffer += rectconfig.start;                                       \
-    }                                                                          \
-    col = rectconfig.size;                                                     \
-    loadbuffer = rowloadbuffer;                                                \
+inline void rect_init() {
+  col = rectconfig.size;
+  rowloadbuffer = loadbuffer;
+}
+
+inline void handle_load_ch(void (*x)(void)) {
+  if (loadmsb) {
+    if (loadmask & 0x01) {
+      ch |= 0x80;
+    }
+    loadmask >>= 1;
+    *loadbuffer = ch;
+    ++loadbuffer;
+    --loadmsb;
+    if (x) {
+      x();
+    }
+  } else {
+    loadmsb = 7;
+    loadmask = ch;
   }
+}
 
-#define RECT_INIT                                                              \
-  {                                                                            \
-    col = rectconfig.size;                                                     \
-    rowloadbuffer = loadbuffer;                                                \
+inline void handle_fill_buffer(void (*x)(void), void (*y)(void)) {
+  j = fillconfig.count;
+  loadbuffer = bufferaddr;
+  if (x) {
+    x();
   }
-
-#define HANDLE_RECT_LOAD HANDLE_LOAD(RECT_SKIP)
-
-#define HANDLE_FILL_BUFFER(x, y)                                               \
-  j = fillconfig.count;                                                        \
-  loadbuffer = bufferaddr;                                                     \
-  x while (j--) {                                                              \
-    *(loadbuffer++) = fillconfig.val;                                          \
-    y                                                                          \
+  while (j--) {
+    *(loadbuffer++) = fillconfig.val;
+    if (y) {
+      y();
+    }
   }
+}
 
-#define HANDLE_FILL_RECT_BUFFER HANDLE_FILL_BUFFER(RECT_INIT, RECT_SKIP)
-
-#define HANDLE_COPY_BUFFER(x, y)                                               \
-  loadbuffer = bufferaddr;                                                     \
-  x while (copyconfig.count--) {                                               \
-    *(loadbuffer++) = *(copyconfig.from++);                                    \
-    y                                                                          \
+inline void handle_copy_buffer(void (*x)(void), void (*y)(void)) {
+  loadbuffer = bufferaddr;
+  if (x) {
+    x();
   }
+  while (copyconfig.count--) {
+    *(loadbuffer++) = *(copyconfig.from++);
+    if (y) {
+      y();
+    }
+  }
+}
 
-#define HANDLE_COPY_RECT_BUFFER HANDLE_COPY_BUFFER(RECT_INIT, RECT_SKIP)
+void reustash() { REU_COMMAND = 0b10010000; }
+
+void reustashrect() {
+  // transfer length must be a multiple of rectconfig.size
+  j = (uint16_t)*REU_TRANSFER_LEN;
+  *(uint16_t *)REU_TRANSFER_LEN = (uint16_t)rectconfig.size;
+  loadbuffer = bufferaddr;
+  while (j) {
+    *(uint16_t *)REU_HOST_BASE = (uint16_t)loadbuffer;
+    reustash();
+    j -= rectconfig.size;
+    i = rectconfig.inc;
+    while (i--) {
+      loadbuffer += rectconfig.start;
+    }
+  }
+}
 
 void (*const asidstopcmdhandler[])(void);
 
@@ -254,21 +283,19 @@ void updatebothsid() {
   updatesid2();
 }
 
-void fillbuffer() { HANDLE_FILL_BUFFER(, ); }
+void fillbuffer() { handle_fill_buffer(NULL, NULL); }
 
-void fillrectbuffer() { HANDLE_FILL_RECT_BUFFER; }
+void fillrectbuffer() { handle_fill_buffer(&rect_init, &rect_skip); }
 
-void copybuffer() { HANDLE_COPY_BUFFER(, ); }
+void copybuffer() { handle_copy_buffer(NULL, NULL); }
 
-void copyrectbuffer() { HANDLE_COPY_RECT_BUFFER; }
-
-void reustash() { REU_COMMAND = 0b10010000; }
+void copyrectbuffer() { handle_copy_buffer(&rect_init, &rect_skip); }
 
 void reufetch() { REU_COMMAND = 0b10010001; }
 
-void handle_load() { HANDLE_LOAD(); }
+void handle_load() { handle_load_ch(NULL); }
 
-void handle_rect_load() { HANDLE_RECT_LOAD; }
+void handle_rect_load() { handle_load_ch(&rect_skip); }
 
 void start_handle_load() {
   datahandler = &handle_load;
@@ -280,7 +307,7 @@ void start_handle_load_rect() {
   datahandler = &handle_load;
   loadbuffer = bufferaddr;
   datahandler = &handle_rect_load;
-  RECT_INIT
+  rect_init();
   setasidstop();
 }
 
@@ -304,9 +331,7 @@ inline void start_reu(uint8_t control) {
   setasidstop();
 }
 
-void start_handle_reu() {
-  start_reu(0);
-}
+void start_handle_reu() { start_reu(0); }
 
 void start_handle_reu_fill() {
   start_reu(0x40); // REU address is fixed.
@@ -419,7 +444,7 @@ void (*const asidstartcmdhandler[])(void) = {
     &start_handle_reu,       // 5b ASID_CMD_REU_STASH_BUFFER
     &start_handle_reu,       // 5c ASID_CMD_REU_FETCH_BUFFER
     &start_handle_reu_fill,  // 5d ASID_CMD_REU_FILL_BUFFER
-    &noop,                   // 5e
+    &start_handle_reu,       // 5e ASID_CMD_REU_STASH_BUFFER_RECT
     &noop,                   // 5f
     &noop,                   // 60
     &noop,                   // 61
@@ -550,7 +575,7 @@ void (*const asidstopcmdhandler[])(void) = {
     &reustash,       // 5b ASID_CMD_REU_STASH_BUFFER
     &reufetch,       // 5c ASID_CMD_REU_FETCH_BUFFER
     &reufetch,       // 5d ASID_CMD_REU_FILL_BUFFER
-    &noop,           // 5e
+    &reustashrect,   // 5e ASID_CMD_REU_STASH_BUFFER_RECT
     &noop,           // 5f
     &noop,           // 60
     &noop,           // 61
