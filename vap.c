@@ -83,6 +83,11 @@ struct {
   uint16_t count;
 } copyconfig;
 
+struct {
+  unsigned char reubase[3];
+  uint16_t count;
+} reurect;
+
 unsigned char buf[256] = {};
 unsigned char cmd = 0;
 unsigned char flagp = 0;
@@ -240,10 +245,13 @@ void reustash() { REU_COMMAND = 0b10010000; }
 
 void reustashrect() {
   // transfer length must be a multiple of rectconfig.size
-  j = (uint16_t)*REU_TRANSFER_LEN;
-  *(uint16_t *)REU_TRANSFER_LEN = (uint16_t)rectconfig.size;
+  j = reurect.count;
   loadbuffer = bufferaddr;
+  uint32_t reu_addr = 0;
+  memcpy(&reu_addr, &reurect.reubase, 3);
   while (j) {
+    memcpy((void *)REU_ADDR_BASE, &reu_addr, 3);
+    *(uint16_t *)REU_TRANSFER_LEN = rectconfig.size;
     *(uint16_t *)REU_HOST_BASE = (uint16_t)loadbuffer;
     reustash();
     j -= rectconfig.size;
@@ -251,6 +259,7 @@ void reustashrect() {
     while (i--) {
       loadbuffer += rectconfig.start;
     }
+    reu_addr += rectconfig.size;
   }
 }
 
@@ -320,6 +329,13 @@ void start_handle_addr() {
 void start_handle_addr_rect() {
   datahandler = &handle_load;
   loadbuffer = (unsigned char *)&rectconfig;
+  setasidstop();
+}
+
+void start_handle_reu_rect() {
+  datahandler = &handle_load;
+  loadbuffer = (unsigned char *)&reurect;
+  REU_CONTROL = 0;
   setasidstop();
 }
 
@@ -444,7 +460,7 @@ void (*const asidstartcmdhandler[])(void) = {
     &start_handle_reu,       // 5b ASID_CMD_REU_STASH_BUFFER
     &start_handle_reu,       // 5c ASID_CMD_REU_FETCH_BUFFER
     &start_handle_reu_fill,  // 5d ASID_CMD_REU_FILL_BUFFER
-    &start_handle_reu,       // 5e ASID_CMD_REU_STASH_BUFFER_RECT
+    &start_handle_reu_rect,  // 5e ASID_CMD_REU_STASH_BUFFER_RECT
     &noop,                   // 5f
     &noop,                   // 60
     &noop,                   // 61
@@ -627,6 +643,7 @@ void init(void) {
   memset(&rectconfig, 0, sizeof(rectconfig));
   memset(&fillconfig, 0, sizeof(fillconfig));
   memset(&copyconfig, 0, sizeof(copyconfig));
+  memset(&reurect, 0, sizeof(reurect));
   const char *c = VAP_VERSION;
   while (*c) {
     putchar(*c++);
