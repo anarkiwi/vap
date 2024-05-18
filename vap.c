@@ -88,9 +88,12 @@ struct {
 } copyconfig;
 
 struct {
-  unsigned char reubase[3];
-  uint16_t count;
-} reurect;
+  unsigned char *hostaddr;
+  struct {
+    unsigned char reubase[3];
+    uint16_t count;
+  } reurect;
+} reushadow;
 
 unsigned char buf[256] = {};
 unsigned char cmd = 0;
@@ -218,7 +221,7 @@ inline void handle_load_ch(void (*const x)(void)) {
   }
 }
 
-inline void handle_fill_buffer(void (*x)(void), void (*y)(void)) {
+inline void handle_fill_buffer(void (*const x)(void), void (*const y)(void)) {
   j = fillconfig.count;
   loadbuffer = bufferaddr;
   if (x) {
@@ -232,7 +235,7 @@ inline void handle_fill_buffer(void (*x)(void), void (*y)(void)) {
   }
 }
 
-inline void handle_copy_buffer(void (*x)(void), void (*y)(void)) {
+inline void handle_copy_buffer(void (*const x)(void), void (*const y)(void)) {
   loadbuffer = bufferaddr;
   if (x) {
     x();
@@ -249,21 +252,22 @@ void reufetch() { REU_COMMAND = 0b10010001; }
 
 void reustash() { REU_COMMAND = 0b10010000; }
 
-inline void manage_reurect(void (*x)(void)) {
+inline void manage_reurect(void (*const x)(void)) {
   // transfer length must be a multiple of rectconfig.size
-  j = reurect.count;
-  loadbuffer = bufferaddr;
+  j = reushadow.reurect.count;
+  reushadow.hostaddr = (unsigned char *)bufferaddr;
   uint32_t reu_addr = 0;
-  memcpy(&reu_addr, &reurect.reubase, 3);
+  memcpy(&reu_addr, &reushadow.reurect.reubase, 3);
+  reushadow.reurect.count = rectconfig.size;
   while (j) {
-    memcpy((void *)REU_ADDR_BASE, &reu_addr, 3);
-    *(uint16_t *)REU_TRANSFER_LEN = rectconfig.size;
-    *(uint16_t *)REU_HOST_BASE = (uint16_t)loadbuffer;
+    memcpy((void *)reushadow.reurect.reubase, &reu_addr,
+           sizeof(reushadow.reurect.reubase));
+    memcpy((void *)REU_HOST_BASE, &reushadow, sizeof(reushadow));
     x();
     j -= rectconfig.size;
     i = rectconfig.inc;
     while (i--) {
-      loadbuffer += rectconfig.start;
+      reushadow.hostaddr += rectconfig.start;
     }
     reu_addr += rectconfig.size;
   }
@@ -342,7 +346,7 @@ void start_handle_addr_rect() {
 
 inline void handle_reu_rect(uint8_t control) {
   datahandler = &handle_load;
-  loadbuffer = (unsigned char *)&reurect;
+  loadbuffer = (unsigned char *)&reushadow.reurect;
   REU_CONTROL = control;
   setasidstop();
 }
@@ -655,7 +659,7 @@ void init(void) {
   memset(&rectconfig, 0, sizeof(rectconfig));
   memset(&fillconfig, 0, sizeof(fillconfig));
   memset(&copyconfig, 0, sizeof(copyconfig));
-  memset(&reurect, 0, sizeof(reurect));
+  memset(&reushadow, 0, sizeof(reushadow));
   const char *c = VAP_VERSION;
   while (*c) {
     putchar(*c++);
