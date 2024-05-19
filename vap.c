@@ -242,6 +242,7 @@ inline void manage_reurect(void (*const x)(void)) {
   // transfer length must be a multiple of rectconfig.size
   j = *REU_TRANSFER_LEN;
   while (j) {
+    // Must reset transfer length on every transfer.
     *REU_TRANSFER_LEN = rectconfig.size;
     x();
     j -= rectconfig.size;
