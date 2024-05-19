@@ -255,21 +255,15 @@ void reustash() { REU_COMMAND = 0b10010000; }
 inline void manage_reurect(void (*const x)(void)) {
   // transfer length must be a multiple of rectconfig.size
   j = reushadow.reurect.count;
-  reushadow.hostaddr = (unsigned char *)bufferaddr;
-  uint32_t reu_addr = 0;
-  memcpy(&reu_addr, &reushadow.reurect.reubase, 3);
-  reushadow.reurect.count = rectconfig.size;
+  memcpy((void *)REU_HOST_BASE, &reushadow, sizeof(reushadow));
   while (j) {
-    memcpy((void *)reushadow.reurect.reubase, &reu_addr,
-           sizeof(reushadow.reurect.reubase));
-    memcpy((void *)REU_HOST_BASE, &reushadow, sizeof(reushadow));
+    *REU_TRANSFER_LEN = rectconfig.size;
     x();
     j -= rectconfig.size;
     i = rectconfig.inc;
     while (i--) {
-      reushadow.hostaddr += rectconfig.start;
+      *REU_HOST_BASE += rectconfig.start;
     }
-    reu_addr += rectconfig.size;
   }
 }
 
