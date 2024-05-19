@@ -31,15 +31,16 @@ const char VAP_VERSION[] = "VAP" VERSION;
 #define RUN_BUFFER 0xc000
 #define REU_COMMAND (*((volatile unsigned char *)0xdf01))
 #define REU_CONTROL (*((volatile unsigned char *)0xdf0a))
-#define REU_HOST_BASE ((volatile unsigned char *)0xdf02)
+#define REU_HOST_BASE ((volatile uint16_t *)0xdf02)
 #define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
-#define REU_TRANSFER_LEN ((volatile unsigned char *)0xdf07)
+#define REU_TRANSFER_LEN ((volatile uint16_t *)0xdf07)
 #define VICII ((volatile unsigned char *)0xd011)
 #define SCREENMEM ((volatile unsigned char *)0x0400)
 #define BORDERCOLOR ((volatile unsigned char *)0xd020)
 #define SIDBASE ((volatile unsigned char *)0xd400)
 #define SIDBASE2 ((volatile unsigned char *)0xd420)
 #define SIDREGSIZE 28
+#define UNFIXED_REU_ADDRESSES 0x0
 #define FIX_REU_ADDRESS 0x40
 #define FIX_HOST_ADDRESS 0x80
 
@@ -75,6 +76,8 @@ struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
   unsigned char size;  // size of a row
   unsigned char inc;   // number of rows to increment
+  uint16_t reu_skip;    // number of addresses to skip per row
+  uint16_t skip;
 } rectconfig;
 
 struct {
@@ -86,14 +89,6 @@ struct {
   unsigned char *from;
   uint16_t count;
 } copyconfig;
-
-struct {
-  unsigned char *hostaddr;
-  struct {
-    unsigned char reubase[3];
-    uint16_t count;
-  } reurect;
-} reushadow;
 
 unsigned char buf[256] = {};
 unsigned char cmd = 0;
@@ -189,11 +184,8 @@ const unsigned char regidmap[] = {
 
 inline void rect_skip() {
   if (!--col) {
-    col = rectconfig.inc;
-    while (col--) {
-      rowloadbuffer += rectconfig.start;
-    }
     col = rectconfig.size;
+    rowloadbuffer += rectconfig.skip;
     loadbuffer = rowloadbuffer;
   }
 }
@@ -254,16 +246,12 @@ void reustash() { REU_COMMAND = 0b10010000; }
 
 inline void manage_reurect(void (*const x)(void)) {
   // transfer length must be a multiple of rectconfig.size
-  j = reushadow.reurect.count;
-  memcpy((void *)REU_HOST_BASE, &reushadow, sizeof(reushadow));
+  j = *REU_TRANSFER_LEN;
   while (j) {
     *REU_TRANSFER_LEN = rectconfig.size;
     x();
     j -= rectconfig.size;
-    i = rectconfig.inc;
-    while (i--) {
-      *REU_HOST_BASE += rectconfig.start;
-    }
+    *REU_HOST_BASE += rectconfig.reu_skip;
   }
 }
 
@@ -332,22 +320,21 @@ void start_handle_addr() {
   setasidstop();
 }
 
+void calcrect() {
+  i = rectconfig.inc;
+  rectconfig.reu_skip = 0;
+  rectconfig.skip = 0;
+  while (i--) {
+     rectconfig.reu_skip += rectconfig.start - rectconfig.size;
+     rectconfig.skip += rectconfig.start;
+  }
+}
+
 void start_handle_addr_rect() {
   datahandler = &handle_load;
   loadbuffer = (unsigned char *)&rectconfig;
   setasidstop();
 }
-
-inline void handle_reu_rect(uint8_t control) {
-  datahandler = &handle_load;
-  loadbuffer = (unsigned char *)&reushadow.reurect;
-  REU_CONTROL = control;
-  setasidstop();
-}
-
-void start_handle_reu_rect() { handle_reu_rect(0); }
-
-void start_handle_reu_fill_rect() { handle_reu_rect(FIX_REU_ADDRESS); }
 
 inline void start_reu(uint8_t control) {
   datahandler = &handle_load;
@@ -357,11 +344,9 @@ inline void start_reu(uint8_t control) {
   setasidstop();
 }
 
-void start_handle_reu() { start_reu(0); }
+void start_handle_reu() { start_reu(UNFIXED_REU_ADDRESSES); }
 
-void start_handle_reu_fill() {
-  start_reu(FIX_REU_ADDRESS); // REU address is fixed.
-}
+void start_handle_reu_fill() { start_reu(FIX_REU_ADDRESS); }
 
 void start_handle_copy() {
   datahandler = &handle_load;
@@ -376,134 +361,134 @@ void start_handle_fill() {
 }
 
 void (*const asidstartcmdhandler[])(void) = {
-    &noop,                       // 0
-    &noop,                       // 1
-    &noop,                       // 2
-    &noop,                       // 3
-    &noop,                       // 4
-    &noop,                       // 5
-    &noop,                       // 6
-    &noop,                       // 7
-    &noop,                       // 8
-    &noop,                       // 9
-    &noop,                       // a
-    &noop,                       // b
-    &noop,                       // c
-    &noop,                       // d
-    &noop,                       // e
-    &noop,                       // f
-    &noop,                       // 10
-    &noop,                       // 11
-    &noop,                       // 12
-    &noop,                       // 13
-    &noop,                       // 14
-    &noop,                       // 15
-    &noop,                       // 16
-    &noop,                       // 17
-    &noop,                       // 18
-    &noop,                       // 19
-    &noop,                       // 1a
-    &noop,                       // 1b
-    &noop,                       // 1c
-    &noop,                       // 1d
-    &noop,                       // 1e
-    &noop,                       // 1f
-    &noop,                       // 20
-    &noop,                       // 21
-    &noop,                       // 22
-    &noop,                       // 23
-    &noop,                       // 24
-    &noop,                       // 25
-    &noop,                       // 26
-    &noop,                       // 27
-    &noop,                       // 28
-    &noop,                       // 29
-    &noop,                       // 2a
-    &noop,                       // 2b
-    &noop,                       // 2c
-    &noop,                       // 2d
-    &noop,                       // 2e
-    &noop,                       // 2f
-    &noop,                       // 30
-    &noop,                       // 31
-    &noop,                       // 32
-    &noop,                       // 33
-    &noop,                       // 34
-    &noop,                       // 35
-    &noop,                       // 36
-    &noop,                       // 37
-    &noop,                       // 38
-    &noop,                       // 39
-    &noop,                       // 3a
-    &noop,                       // 3b
-    &noop,                       // 3c
-    &noop,                       // 3d
-    &noop,                       // 3e
-    &noop,                       // 3f
-    &noop,                       // 40
-    &noop,                       // 41
-    &noop,                       // 42
-    &noop,                       // 43
-    &noop,                       // 44
-    &noop,                       // 45
-    &noop,                       // 46
-    &noop,                       // 47
-    &noop,                       // 48
-    &noop,                       // 49
-    &noop,                       // 4a
-    &noop,                       // 4b
-    &setasidstop,                // 4c ASID_CMD_START
-    &setasidstop,                // 4d ASID_CMD_STOP
-    &setasidstop,                // 4e ASID_CMD_UPDATE
-    &noop,                       // 4f
-    &setasidstop,                // 50 ASID_CMD_UPDATE2
-    &setasidstop,                // 51 ASID_CMD_UPDATE_BOTH
-    &setasidstop,                // 52 ASID_CMD_RUN_BUFFER
-    &start_handle_load,          // 53 ASID_CMD_LOAD_BUFFER
-    &start_handle_addr,          // 54 ASID_CMD_ADDR_BUFFER
-    &start_handle_load_rect,     // 55 ASID_CMD_LOAD_RECT_BUFFER
-    &start_handle_addr_rect,     // 56 ASID_CMD_ADDR_RECT_BUFFER
-    &start_handle_fill,          // 57 ASID_CMD_FILL_BUFFER
-    &start_handle_fill,          // 58 ASID_CMD_FILL_RECT_BUFFER
-    &start_handle_copy,          // 59 ASID_CMD_COPY_BUFFER
-    &start_handle_copy,          // 5a ASID_CMD_COPY_RECT_BUFFER
-    &start_handle_reu,           // 5b ASID_CMD_REU_STASH_BUFFER
-    &start_handle_reu,           // 5c ASID_CMD_REU_FETCH_BUFFER
-    &start_handle_reu_fill,      // 5d ASID_CMD_REU_FILL_BUFFER
-    &start_handle_reu_rect,      // 5e ASID_CMD_REU_STASH_BUFFER_RECT
-    &start_handle_reu_rect,      // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
-    &start_handle_reu_fill_rect, // 60 ASID_CMD_REU_FILL_BUFFER_RECT
-    &noop,                       // 61
-    &noop,                       // 62
-    &noop,                       // 63
-    &noop,                       // 64
-    &noop,                       // 65
-    &noop,                       // 66
-    &noop,                       // 67
-    &noop,                       // 68
-    &noop,                       // 69
-    &noop,                       // 6a
-    &noop,                       // 6b
-    &noop,                       // 6c
-    &noop,                       // 6d
-    &noop,                       // 6e
-    &noop,                       // 6f
-    &noop,                       // 70
-    &noop,                       // 71
-    &noop,                       // 72
-    &noop,                       // 73
-    &noop,                       // 74
-    &noop,                       // 75
-    &noop,                       // 76
-    &noop,                       // 77
-    &noop,                       // 78
-    &noop,                       // 79
-    &noop,                       // 7a
-    &noop,                       // 7b
-    &noop,                       // 7c
-    &noop,                       // 7d
-    &noop,                       // 7e
-    &noop,                       // 7f
+    &noop,                   // 0
+    &noop,                   // 1
+    &noop,                   // 2
+    &noop,                   // 3
+    &noop,                   // 4
+    &noop,                   // 5
+    &noop,                   // 6
+    &noop,                   // 7
+    &noop,                   // 8
+    &noop,                   // 9
+    &noop,                   // a
+    &noop,                   // b
+    &noop,                   // c
+    &noop,                   // d
+    &noop,                   // e
+    &noop,                   // f
+    &noop,                   // 10
+    &noop,                   // 11
+    &noop,                   // 12
+    &noop,                   // 13
+    &noop,                   // 14
+    &noop,                   // 15
+    &noop,                   // 16
+    &noop,                   // 17
+    &noop,                   // 18
+    &noop,                   // 19
+    &noop,                   // 1a
+    &noop,                   // 1b
+    &noop,                   // 1c
+    &noop,                   // 1d
+    &noop,                   // 1e
+    &noop,                   // 1f
+    &noop,                   // 20
+    &noop,                   // 21
+    &noop,                   // 22
+    &noop,                   // 23
+    &noop,                   // 24
+    &noop,                   // 25
+    &noop,                   // 26
+    &noop,                   // 27
+    &noop,                   // 28
+    &noop,                   // 29
+    &noop,                   // 2a
+    &noop,                   // 2b
+    &noop,                   // 2c
+    &noop,                   // 2d
+    &noop,                   // 2e
+    &noop,                   // 2f
+    &noop,                   // 30
+    &noop,                   // 31
+    &noop,                   // 32
+    &noop,                   // 33
+    &noop,                   // 34
+    &noop,                   // 35
+    &noop,                   // 36
+    &noop,                   // 37
+    &noop,                   // 38
+    &noop,                   // 39
+    &noop,                   // 3a
+    &noop,                   // 3b
+    &noop,                   // 3c
+    &noop,                   // 3d
+    &noop,                   // 3e
+    &noop,                   // 3f
+    &noop,                   // 40
+    &noop,                   // 41
+    &noop,                   // 42
+    &noop,                   // 43
+    &noop,                   // 44
+    &noop,                   // 45
+    &noop,                   // 46
+    &noop,                   // 47
+    &noop,                   // 48
+    &noop,                   // 49
+    &noop,                   // 4a
+    &noop,                   // 4b
+    &setasidstop,            // 4c ASID_CMD_START
+    &setasidstop,            // 4d ASID_CMD_STOP
+    &setasidstop,            // 4e ASID_CMD_UPDATE
+    &noop,                   // 4f
+    &setasidstop,            // 50 ASID_CMD_UPDATE2
+    &setasidstop,            // 51 ASID_CMD_UPDATE_BOTH
+    &setasidstop,            // 52 ASID_CMD_RUN_BUFFER
+    &start_handle_load,      // 53 ASID_CMD_LOAD_BUFFER
+    &start_handle_addr,      // 54 ASID_CMD_ADDR_BUFFER
+    &start_handle_load_rect, // 55 ASID_CMD_LOAD_RECT_BUFFER
+    &start_handle_addr_rect, // 56 ASID_CMD_ADDR_RECT_BUFFER
+    &start_handle_fill,      // 57 ASID_CMD_FILL_BUFFER
+    &start_handle_fill,      // 58 ASID_CMD_FILL_RECT_BUFFER
+    &start_handle_copy,      // 59 ASID_CMD_COPY_BUFFER
+    &start_handle_copy,      // 5a ASID_CMD_COPY_RECT_BUFFER
+    &start_handle_reu,       // 5b ASID_CMD_REU_STASH_BUFFER
+    &start_handle_reu,       // 5c ASID_CMD_REU_FETCH_BUFFER
+    &start_handle_reu_fill,  // 5d ASID_CMD_REU_FILL_BUFFER
+    &start_handle_reu,       // 5e ASID_CMD_REU_STASH_BUFFER_RECT
+    &start_handle_reu,       // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
+    &start_handle_reu_fill,  // 60 ASID_CMD_REU_FILL_BUFFER_RECT
+    &noop,                   // 61
+    &noop,                   // 62
+    &noop,                   // 63
+    &noop,                   // 64
+    &noop,                   // 65
+    &noop,                   // 66
+    &noop,                   // 67
+    &noop,                   // 68
+    &noop,                   // 69
+    &noop,                   // 6a
+    &noop,                   // 6b
+    &noop,                   // 6c
+    &noop,                   // 6d
+    &noop,                   // 6e
+    &noop,                   // 6f
+    &noop,                   // 70
+    &noop,                   // 71
+    &noop,                   // 72
+    &noop,                   // 73
+    &noop,                   // 74
+    &noop,                   // 75
+    &noop,                   // 76
+    &noop,                   // 77
+    &noop,                   // 78
+    &noop,                   // 79
+    &noop,                   // 7a
+    &noop,                   // 7b
+    &noop,                   // 7c
+    &noop,                   // 7d
+    &noop,                   // 7e
+    &noop,                   // 7f
 };
 
 void (*const asidstopcmdhandler[])(void) = {
@@ -593,7 +578,7 @@ void (*const asidstopcmdhandler[])(void) = {
     &noop,           // 53 ASID_CMD_LOAD_BUFFER
     &noop,           // 54 ASID_CMD_ADDR_BUFFER
     &noop,           // 55 ASID_CMD_LOAD_RECT_BUFFER
-    &noop,           // 56 ASID_CMD_ADDR_RECT_BUFFER
+    &calcrect,       // 56 ASID_CMD_ADDR_RECT_BUFFER
     &fillbuffer,     // 57 ASID_CMD_FILL_BUFFER
     &fillrectbuffer, // 58 ASID_CMD_FILL_RECT_BUFFER
     &copybuffer,     // 59 ASID_CMD_COPY_BUFFER
@@ -653,7 +638,6 @@ void init(void) {
   memset(&rectconfig, 0, sizeof(rectconfig));
   memset(&fillconfig, 0, sizeof(fillconfig));
   memset(&copyconfig, 0, sizeof(copyconfig));
-  memset(&reushadow, 0, sizeof(reushadow));
   const char *c = VAP_VERSION;
   while (*c) {
     putchar(*c++);
