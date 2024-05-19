@@ -76,8 +76,7 @@ struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
   unsigned char size;  // size of a row
   unsigned char inc;   // number of rows to increment
-  uint16_t reu_skip;    // number of addresses to skip per row
-  uint16_t skip;
+  uint16_t skip;       // number of addresses to skip per row
 } rectconfig;
 
 struct {
@@ -110,7 +109,6 @@ uint16_t j = 0;
 
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
 volatile unsigned char *loadbuffer = 0;
-volatile unsigned char *rowloadbuffer = 0;
 
 void noop() {}
 
@@ -185,15 +183,11 @@ const unsigned char regidmap[] = {
 inline void rect_skip() {
   if (!--col) {
     col = rectconfig.size;
-    rowloadbuffer += rectconfig.skip;
-    loadbuffer = rowloadbuffer;
+    loadbuffer += rectconfig.skip;
   }
 }
 
-inline void rect_init() {
-  col = rectconfig.size;
-  rowloadbuffer = loadbuffer;
-}
+inline void rect_init() { col = rectconfig.size; }
 
 inline void handle_load_ch(void (*const x)(void)) {
   if (loadmsb) {
@@ -251,7 +245,7 @@ inline void manage_reurect(void (*const x)(void)) {
     *REU_TRANSFER_LEN = rectconfig.size;
     x();
     j -= rectconfig.size;
-    *REU_HOST_BASE += rectconfig.reu_skip;
+    *REU_HOST_BASE += rectconfig.skip;
   }
 }
 
@@ -322,11 +316,9 @@ void start_handle_addr() {
 
 void calcrect() {
   i = rectconfig.inc;
-  rectconfig.reu_skip = 0;
   rectconfig.skip = 0;
   while (i--) {
-     rectconfig.reu_skip += rectconfig.start - rectconfig.size;
-     rectconfig.skip += rectconfig.start;
+    rectconfig.skip += rectconfig.start - rectconfig.size;
   }
 }
 
