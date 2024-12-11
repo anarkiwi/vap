@@ -24,7 +24,13 @@
 #include <stdio.h>
 #include <string.h>
 
-const char VAP_VERSION[] = "VAP" VERSION;
+#ifdef POLL
+#define VAP_NAME "VAP-POLL"
+#else
+#define VAP_NAME "VAP"
+#endif
+
+const char VAP_VERSION[] = VAP_NAME VERSION;
 
 #define CLOCK_ACK VW(0xF8)
 
@@ -36,13 +42,15 @@ const char VAP_VERSION[] = "VAP" VERSION;
 #define REU_TRANSFER_LEN ((volatile uint16_t *)0xdf07)
 #define VICII ((volatile unsigned char *)0xd011)
 #define SCREENMEM ((volatile unsigned char *)0x0400)
-#define BORDERCOLOR ((volatile unsigned char *)0xd020)
+#define BORDERCOLOR (*((volatile unsigned char *)0xd020))
 #define SIDBASE ((volatile unsigned char *)0xd400)
 #define SIDBASE2 ((volatile unsigned char *)0xd420)
 #define SIDREGSIZE 28
 #define UNFIXED_REU_ADDRESSES 0x0
 #define FIX_REU_ADDRESS 0x40
 #define FIX_HOST_ADDRESS 0x80
+#define NMI_VECTOR (*((volatile uint16_t *)0x0318))
+#define CIA2ICTRL (*((volatile unsigned char *)0xdd0d))
 
 #define SYSEX_START 0xf0
 #define ASID_MANID 0x2d
@@ -105,10 +113,17 @@ unsigned char i = 0;
 unsigned char loadmsb = 0;
 unsigned char loadmask = 0;
 unsigned char col = 0;
+unsigned char nmi_in = 0;
+unsigned char nmi_ack = 0;
 uint16_t j = 0;
 
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
 volatile unsigned char *loadbuffer = 0;
+
+void __attribute__((interrupt)) _handle_nmi() {
+  asm("bit $dd0d"); // ack NMI
+  BORDERCOLOR = ++nmi_in;
+}
 
 void noop() {}
 
@@ -620,8 +635,14 @@ void initvessel(void) {
   VRESET;
   VIN;
   VOUT;
-  VCMD(4); // config passthrough
-  VW(4);
+  VCMD(4); // config command
+#ifdef POLL
+  VW(4); // transparent mode
+#else
+  VW(1 + 4); // transparent mode with NMI
+#endif
+  VIN;
+  VOUT;
 }
 
 void init(void) {
@@ -636,6 +657,8 @@ void init(void) {
     putchar(*c++);
   }
   SEI();
+  NMI_VECTOR = (volatile uint16_t)&_handle_nmi;
+  CIA2ICTRL = 0b10010000;
 }
 
 void handle_cmd() {
@@ -657,6 +680,12 @@ void handle_manid() {
 
 void midiloop(void) {
   for (;;) {
+#ifndef POLL
+    if (nmi_in == nmi_ack) {
+      continue;
+    }
+    ++nmi_ack;
+#endif
     VIN;
     for (i = VR; i; --i) {
       buf[++writep] = VR;
