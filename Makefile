@@ -1,18 +1,24 @@
 VERSION := $(shell git describe --tags --abbrev=0)
+CFLAGS := -Os -fnonreentrant -flto -DVERSION=\"${VERSION}\"
+SOURCES := vap.c vessel.h Makefile
+PRGS := vap-poll.prg vap.prg
 
 all: vap.d64 vap.prg
 
-vap.prg: vap.c vessel.h Makefile
-	/usr/local/llvm-mos/bin/mos-c64-clang -Os -fnonreentrant -flto -DVERSION=\"${VERSION}\" -o vap.prg vap.c
+vap.prg: $(SOURCES)
+	/usr/local/llvm-mos/bin/mos-c64-clang $(CFLAGS) -o $@ $<
 
-vap.d64: vap.prg
-	c1541 -format diskname,id d64 vap.d64 -attach vap.d64 -write vap.prg vap
+vap-poll.prg: $(SOURCES)
+	/usr/local/llvm-mos/bin/mos-c64-clang $(CFLAGS) -DPOLL -o $@ $<
+
+vap.d64: $(PRGS)
+	c1541 -format diskname,id d64 vap.d64 -attach vap.d64 -write vap.prg vap -write vap-poll.prg vap-poll
 
 clean:
-	rm -f vap.prg vap.d64 vap.prg.elf vap.o vap.crt
+	rm -f $(PRGS) vap.d64 vap.crt *.o *.elf
 
 upload: all
-	ncftpput -p "" -Cv c64 vap.prg /Temp/vap.prg
+	ncftpput -p "" -v c64 /Temp $(PRGS)
 
 upload-crt: all
 	./prg2crt.py vap.prg vap.crt
