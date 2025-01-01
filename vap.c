@@ -108,6 +108,7 @@ unsigned char regidflags = 0;
 unsigned char msbs = 0;
 unsigned char reg = 0;
 unsigned char val = 0;
+unsigned char regcount = 0;
 unsigned char writep = 0;
 unsigned char readp = 0;
 unsigned char cmdp = 0;
@@ -319,6 +320,7 @@ inline void set_reg() {
     reg = ch;
     val = 0;
   }
+  ++regcount;
 }
 
 void handle_reg();
@@ -334,11 +336,18 @@ void handle_reg() {
 }
 
 void start_handle_reg() {
+  regcount = 0;
   datahandler = &handle_reg;
   setasidstop();
 }
 
-void stop_handle_reg() { SIDSHADOW(SIDBASE); }
+void stop_handle_reg() {
+  if (regcount == 1) {
+    SIDBASE[reg] = sidshadow[reg];
+  } else {
+    SIDSHADOW(SIDBASE);
+  }
+}
 
 void handle_val2() {
   sidshadow[reg] = ch | val;
@@ -351,11 +360,18 @@ void handle_reg2() {
 }
 
 void start_handle_reg2() {
+  regcount = 0;
   datahandler = &handle_reg2;
   setasidstop();
 }
 
-void stop_handle_reg2() { SIDSHADOW(SIDBASE2); }
+void stop_handle_reg2() {
+  if (regcount == 1) {
+    SIDBASE2[reg] = sidshadow[reg];
+  } else {
+    SIDSHADOW(SIDBASE2);
+  }
+}
 
 void fillbuffer() { handle_fill_buffer(NULL, NULL); }
 
