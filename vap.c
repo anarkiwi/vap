@@ -107,6 +107,7 @@ unsigned char lsbp = 0;
 unsigned char regidflags = 0;
 unsigned char msbs = 0;
 unsigned char reg = 0;
+unsigned char regcount = 0;
 unsigned char val = 0;
 unsigned char writep = 0;
 unsigned char readp = 0;
@@ -169,6 +170,14 @@ const unsigned char regidmap[] = {
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
 #define SIDSHADOW(b) memcpy((void *)b, sidshadow, sizeof(sidshadow))
+#define SIDSHADOW1(b)                                                          \
+  {                                                                            \
+    if (regcount == 1) {                                                       \
+      b[reg] == sidshadow[reg];                                                \
+    } else {                                                                   \
+      SIDSHADOW(b);                                                            \
+    }                                                                          \
+  }
 
 #define REGMASK(base, mask, regid)                                             \
   if (regidflags & mask) {                                                     \
@@ -326,17 +335,19 @@ void handle_reg() {
     reg = ch;
     val = 0;
   }
+  ++regcount;
   datahandler = &handle_val;
 }
 
 void start_handle_reg() {
+  regcount = 0;
   datahandler = &handle_reg;
   setasidstop();
 }
 
-void stop_handle_reg() { SIDSHADOW(SIDBASE); }
+void stop_handle_reg() { SIDSHADOW1(SIDBASE); }
 
-void stop_handle_reg2() { SIDSHADOW(SIDBASE2); }
+void stop_handle_reg2() { SIDSHADOW1(SIDBASE2); }
 
 void fillbuffer() { handle_fill_buffer(NULL, NULL); }
 
