@@ -40,7 +40,7 @@ const char VAP_VERSION[] = VAP_NAME VERSION;
 #define REU_HOST_BASE ((volatile uint16_t *)0xdf02)
 #define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
 #define REU_TRANSFER_LEN ((volatile uint16_t *)0xdf07)
-#define VICII ((volatile unsigned char *)0xd011)
+#define VICII (*((volatile unsigned char *)0xd011))
 #define SCREENMEM ((volatile unsigned char *)0x0400)
 #define BORDERCOLOR (*((volatile unsigned char *)0xd020))
 #define SIDBASE ((volatile unsigned char *)0xd400)
@@ -76,8 +76,10 @@ enum ASID_CMD {
   ASID_CMD_REU_FILL_BUFFER = 0x5d,
   ASID_CMD_REU_STASH_BUFFER_RECT = 0x5e,
   ASID_CMD_REU_FETCH_BUFFER_RECT = 0x5f,
-  ASID_CMD_REU_FILL_BUFFER_RECT = 0x60
+  ASID_CMD_REU_FILL_BUFFER_RECT = 0x60,
   // TODO: REU fetch to rectangle.
+  ASID_CMD_UPDATE_REG = 0x6c,
+  ASID_CMD_UPDATE2_REG = 0x6d,
 };
 
 struct {
@@ -104,6 +106,7 @@ unsigned char msbp = 0;
 unsigned char lsbp = 0;
 unsigned char regidflags = 0;
 unsigned char msbs = 0;
+unsigned char reg = 0;
 unsigned char val = 0;
 unsigned char writep = 0;
 unsigned char readp = 0;
@@ -298,6 +301,48 @@ void updatebothsid() {
   updatesid2();
 }
 
+inline void set_reg() {
+  if (ch & (1 << 6)) {
+    val = (1 << 7);
+    reg = ch & ((1 << 6) - 1);
+  } else {
+    reg = ch;
+    val = 0;
+  }
+}
+
+void handle_reg();
+
+void handle_val() {
+  *(SIDBASE + reg) = ch | val;
+  datahandler = &handle_reg;
+}
+
+void handle_reg() {
+  set_reg();
+  datahandler = &handle_val;
+}
+
+void start_handle_reg() {
+  datahandler = &handle_reg;
+  setasidstop();
+}
+
+void handle_val2() {
+  *(SIDBASE2 + reg) = ch | val;
+  datahandler = &handle_reg;
+}
+
+void handle_reg2() {
+  set_reg();
+  datahandler = &handle_val2;
+}
+
+void start_handle_reg2() {
+  datahandler = &handle_reg2;
+  setasidstop();
+}
+
 void fillbuffer() { handle_fill_buffer(NULL, NULL); }
 
 void fillrectbuffer() { handle_fill_buffer(&rect_init, &rect_skip); }
@@ -477,8 +522,8 @@ void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 69
     &noop,                   // 6a
     &noop,                   // 6b
-    &noop,                   // 6c
-    &noop,                   // 6d
+    &start_handle_reg,       // 6c ASID_CMD_UPDATE_REG
+    &start_handle_reg2,      // 6d ASID_CMD_UPDATE2_REG
     &noop,                   // 6e
     &noop,                   // 6f
     &noop,                   // 70
@@ -608,8 +653,8 @@ void (*const asidstopcmdhandler[])(void) = {
     &noop,           // 69
     &noop,           // 6a
     &noop,           // 6b
-    &noop,           // 6c
-    &noop,           // 6d
+    &noop,           // 6c ASID_CMD_UPDATE_REG
+    &noop,           // 6d ASID_CMD_UPDATE2_REG
     &noop,           // 6e
     &noop,           // 6f
     &noop,           // 70
@@ -657,7 +702,7 @@ void init(void) {
     putchar(*c++);
   }
   SEI();
-  NMI_VECTOR = (volatile uint16_t)&_handle_nmi;
+  NMI_VECTOR = (volatile uint16_t) & _handle_nmi;
   CIA2ICTRL = 0b10010000;
 }
 
