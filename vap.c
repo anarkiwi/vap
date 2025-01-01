@@ -40,7 +40,7 @@ const char VAP_VERSION[] = VAP_NAME VERSION;
 #define REU_HOST_BASE ((volatile uint16_t *)0xdf02)
 #define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
 #define REU_TRANSFER_LEN ((volatile uint16_t *)0xdf07)
-#define VICII ((volatile unsigned char *)0xd011)
+#define VICII (*((volatile unsigned char *)0xd011))
 #define SCREENMEM ((volatile unsigned char *)0x0400)
 #define BORDERCOLOR (*((volatile unsigned char *)0xd020))
 #define SIDBASE ((volatile unsigned char *)0xd400)
@@ -76,8 +76,10 @@ enum ASID_CMD {
   ASID_CMD_REU_FILL_BUFFER = 0x5d,
   ASID_CMD_REU_STASH_BUFFER_RECT = 0x5e,
   ASID_CMD_REU_FETCH_BUFFER_RECT = 0x5f,
-  ASID_CMD_REU_FILL_BUFFER_RECT = 0x60
+  ASID_CMD_REU_FILL_BUFFER_RECT = 0x60,
   // TODO: REU fetch to rectangle.
+  ASID_CMD_UPDATE_REG = 0x6c,
+  ASID_CMD_UPDATE2_REG = 0x6d,
 };
 
 struct {
@@ -104,6 +106,8 @@ unsigned char msbp = 0;
 unsigned char lsbp = 0;
 unsigned char regidflags = 0;
 unsigned char msbs = 0;
+unsigned char reg = 0;
+unsigned char regcount = 0;
 unsigned char val = 0;
 unsigned char writep = 0;
 unsigned char readp = 0;
@@ -163,6 +167,17 @@ const unsigned char regidmap[] = {
     11, // ID 26
     18, // ID 27
 };
+
+unsigned char sidshadow[sizeof(regidmap)] = {};
+#define SIDSHADOW(b) memcpy((void *)b, sidshadow, sizeof(sidshadow))
+#define SIDSHADOW1(b)                                                          \
+  {                                                                            \
+    if (regcount == 1) {                                                       \
+      b[reg] == sidshadow[reg];                                                \
+    } else {                                                                   \
+      SIDSHADOW(b);                                                            \
+    }                                                                          \
+  }
 
 #define REGMASK(base, mask, regid)                                             \
   if (regidflags & mask) {                                                     \
@@ -289,14 +304,50 @@ void initsid(void) {
 
 void indirect(void) { asm("jmp (bufferaddr)"); }
 
-void updatesid() { UPDATESID(SIDBASE); }
+void updatesid() {
+  UPDATESID(sidshadow);
+  SIDSHADOW(SIDBASE);
+}
 
-void updatesid2() { UPDATESID(SIDBASE2); }
+void updatesid2() {
+  UPDATESID(sidshadow);
+  SIDSHADOW(SIDBASE2);
+}
 
 void updatebothsid() {
-  updatesid();
-  updatesid2();
+  UPDATESID(sidshadow);
+  SIDSHADOW(SIDBASE);
+  SIDSHADOW(SIDBASE2);
 }
+
+void handle_reg();
+
+void handle_val() {
+  sidshadow[reg] = ch | val;
+  datahandler = &handle_reg;
+}
+
+void handle_reg() {
+  if (ch & (1 << 6)) {
+    val = (1 << 7);
+    reg = ch & ((1 << 6) - 1);
+  } else {
+    reg = ch;
+    val = 0;
+  }
+  ++regcount;
+  datahandler = &handle_val;
+}
+
+void start_handle_reg() {
+  regcount = 0;
+  datahandler = &handle_reg;
+  setasidstop();
+}
+
+void stop_handle_reg() { SIDSHADOW1(SIDBASE); }
+
+void stop_handle_reg2() { SIDSHADOW1(SIDBASE2); }
 
 void fillbuffer() { handle_fill_buffer(NULL, NULL); }
 
@@ -477,8 +528,8 @@ void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 69
     &noop,                   // 6a
     &noop,                   // 6b
-    &noop,                   // 6c
-    &noop,                   // 6d
+    &start_handle_reg,       // 6c ASID_CMD_UPDATE_REG
+    &start_handle_reg,       // 6d ASID_CMD_UPDATE2_REG
     &noop,                   // 6e
     &noop,                   // 6f
     &noop,                   // 70
@@ -500,134 +551,134 @@ void (*const asidstartcmdhandler[])(void) = {
 };
 
 void (*const asidstopcmdhandler[])(void) = {
-    &noop,           // 0
-    &noop,           // 1
-    &noop,           // 2
-    &noop,           // 3
-    &noop,           // 4
-    &noop,           // 5
-    &noop,           // 6
-    &noop,           // 7
-    &noop,           // 8
-    &noop,           // 9
-    &noop,           // a
-    &noop,           // b
-    &noop,           // c
-    &noop,           // d
-    &noop,           // e
-    &noop,           // f
-    &noop,           // 10
-    &noop,           // 11
-    &noop,           // 12
-    &noop,           // 13
-    &noop,           // 14
-    &noop,           // 15
-    &noop,           // 16
-    &noop,           // 17
-    &noop,           // 18
-    &noop,           // 19
-    &noop,           // 1a
-    &noop,           // 1b
-    &noop,           // 1c
-    &noop,           // 1d
-    &noop,           // 1e
-    &noop,           // 1f
-    &noop,           // 20
-    &noop,           // 21
-    &noop,           // 22
-    &noop,           // 23
-    &noop,           // 24
-    &noop,           // 25
-    &noop,           // 26
-    &noop,           // 27
-    &noop,           // 28
-    &noop,           // 29
-    &noop,           // 2a
-    &noop,           // 2b
-    &noop,           // 2c
-    &noop,           // 2d
-    &noop,           // 2e
-    &noop,           // 2f
-    &noop,           // 30
-    &noop,           // 31
-    &noop,           // 32
-    &noop,           // 33
-    &noop,           // 34
-    &noop,           // 35
-    &noop,           // 36
-    &noop,           // 37
-    &noop,           // 38
-    &noop,           // 39
-    &noop,           // 3a
-    &noop,           // 3b
-    &noop,           // 3c
-    &noop,           // 3d
-    &noop,           // 3e
-    &noop,           // 3f
-    &noop,           // 40
-    &noop,           // 41
-    &noop,           // 42
-    &noop,           // 43
-    &noop,           // 44
-    &noop,           // 45
-    &noop,           // 46
-    &noop,           // 47
-    &noop,           // 48
-    &noop,           // 49
-    &noop,           // 4a
-    &noop,           // 4b
-    &initsid,        // 4c ASID_CMD_START
-    &initsid,        // 4d ASID_CMD_STOP
-    &updatesid,      // 4e ASID_CMD_UPDATE
-    &noop,           // 4f
-    &updatesid2,     // 50 ASID_CMD_UPDATE2
-    &updatebothsid,  // 51 ASID_CMD_UPDATE_BOTH
-    &indirect,       // 52 ASID_CMD_RUN_BUFFER
-    &noop,           // 53 ASID_CMD_LOAD_BUFFER
-    &noop,           // 54 ASID_CMD_ADDR_BUFFER
-    &noop,           // 55 ASID_CMD_LOAD_RECT_BUFFER
-    &calcrect,       // 56 ASID_CMD_ADDR_RECT_BUFFER
-    &fillbuffer,     // 57 ASID_CMD_FILL_BUFFER
-    &fillrectbuffer, // 58 ASID_CMD_FILL_RECT_BUFFER
-    &copybuffer,     // 59 ASID_CMD_COPY_BUFFER
-    &copyrectbuffer, // 5a ASID_CMD_COPY_RECT_BUFFER
-    &reustash,       // 5b ASID_CMD_REU_STASH_BUFFER
-    &reufetch,       // 5c ASID_CMD_REU_FETCH_BUFFER
-    &reufetch,       // 5d ASID_CMD_REU_FILL_BUFFER
-    &reustashrect,   // 5e ASID_CMD_REU_STASH_BUFFER_RECT
-    &reufetchrect,   // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
-    &reufetchrect,   // 60 ASID_CMD_REU_FILL_BUFFER_RECT
-    &noop,           // 61
-    &noop,           // 62
-    &noop,           // 63
-    &noop,           // 64
-    &noop,           // 65
-    &noop,           // 66
-    &noop,           // 67
-    &noop,           // 68
-    &noop,           // 69
-    &noop,           // 6a
-    &noop,           // 6b
-    &noop,           // 6c
-    &noop,           // 6d
-    &noop,           // 6e
-    &noop,           // 6f
-    &noop,           // 70
-    &noop,           // 71
-    &noop,           // 72
-    &noop,           // 73
-    &noop,           // 74
-    &noop,           // 75
-    &noop,           // 76
-    &noop,           // 77
-    &noop,           // 78
-    &noop,           // 79
-    &noop,           // 7a
-    &noop,           // 7b
-    &noop,           // 7c
-    &noop,           // 7d
-    &noop,           // 7e
-    &noop,           // 7f
+    &noop,             // 0
+    &noop,             // 1
+    &noop,             // 2
+    &noop,             // 3
+    &noop,             // 4
+    &noop,             // 5
+    &noop,             // 6
+    &noop,             // 7
+    &noop,             // 8
+    &noop,             // 9
+    &noop,             // a
+    &noop,             // b
+    &noop,             // c
+    &noop,             // d
+    &noop,             // e
+    &noop,             // f
+    &noop,             // 10
+    &noop,             // 11
+    &noop,             // 12
+    &noop,             // 13
+    &noop,             // 14
+    &noop,             // 15
+    &noop,             // 16
+    &noop,             // 17
+    &noop,             // 18
+    &noop,             // 19
+    &noop,             // 1a
+    &noop,             // 1b
+    &noop,             // 1c
+    &noop,             // 1d
+    &noop,             // 1e
+    &noop,             // 1f
+    &noop,             // 20
+    &noop,             // 21
+    &noop,             // 22
+    &noop,             // 23
+    &noop,             // 24
+    &noop,             // 25
+    &noop,             // 26
+    &noop,             // 27
+    &noop,             // 28
+    &noop,             // 29
+    &noop,             // 2a
+    &noop,             // 2b
+    &noop,             // 2c
+    &noop,             // 2d
+    &noop,             // 2e
+    &noop,             // 2f
+    &noop,             // 30
+    &noop,             // 31
+    &noop,             // 32
+    &noop,             // 33
+    &noop,             // 34
+    &noop,             // 35
+    &noop,             // 36
+    &noop,             // 37
+    &noop,             // 38
+    &noop,             // 39
+    &noop,             // 3a
+    &noop,             // 3b
+    &noop,             // 3c
+    &noop,             // 3d
+    &noop,             // 3e
+    &noop,             // 3f
+    &noop,             // 40
+    &noop,             // 41
+    &noop,             // 42
+    &noop,             // 43
+    &noop,             // 44
+    &noop,             // 45
+    &noop,             // 46
+    &noop,             // 47
+    &noop,             // 48
+    &noop,             // 49
+    &noop,             // 4a
+    &noop,             // 4b
+    &initsid,          // 4c ASID_CMD_START
+    &initsid,          // 4d ASID_CMD_STOP
+    &updatesid,        // 4e ASID_CMD_UPDATE
+    &noop,             // 4f
+    &updatesid2,       // 50 ASID_CMD_UPDATE2
+    &updatebothsid,    // 51 ASID_CMD_UPDATE_BOTH
+    &indirect,         // 52 ASID_CMD_RUN_BUFFER
+    &noop,             // 53 ASID_CMD_LOAD_BUFFER
+    &noop,             // 54 ASID_CMD_ADDR_BUFFER
+    &noop,             // 55 ASID_CMD_LOAD_RECT_BUFFER
+    &calcrect,         // 56 ASID_CMD_ADDR_RECT_BUFFER
+    &fillbuffer,       // 57 ASID_CMD_FILL_BUFFER
+    &fillrectbuffer,   // 58 ASID_CMD_FILL_RECT_BUFFER
+    &copybuffer,       // 59 ASID_CMD_COPY_BUFFER
+    &copyrectbuffer,   // 5a ASID_CMD_COPY_RECT_BUFFER
+    &reustash,         // 5b ASID_CMD_REU_STASH_BUFFER
+    &reufetch,         // 5c ASID_CMD_REU_FETCH_BUFFER
+    &reufetch,         // 5d ASID_CMD_REU_FILL_BUFFER
+    &reustashrect,     // 5e ASID_CMD_REU_STASH_BUFFER_RECT
+    &reufetchrect,     // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
+    &reufetchrect,     // 60 ASID_CMD_REU_FILL_BUFFER_RECT
+    &noop,             // 61
+    &noop,             // 62
+    &noop,             // 63
+    &noop,             // 64
+    &noop,             // 65
+    &noop,             // 66
+    &noop,             // 67
+    &noop,             // 68
+    &noop,             // 69
+    &noop,             // 6a
+    &noop,             // 6b
+    &stop_handle_reg,  // 6c ASID_CMD_UPDATE_REG
+    &stop_handle_reg2, // 6d ASID_CMD_UPDATE2_REG
+    &noop,             // 6e
+    &noop,             // 6f
+    &noop,             // 70
+    &noop,             // 71
+    &noop,             // 72
+    &noop,             // 73
+    &noop,             // 74
+    &noop,             // 75
+    &noop,             // 76
+    &noop,             // 77
+    &noop,             // 78
+    &noop,             // 79
+    &noop,             // 7a
+    &noop,             // 7b
+    &noop,             // 7c
+    &noop,             // 7d
+    &noop,             // 7e
+    &noop,             // 7f
 };
 
 void initvessel(void) {
@@ -657,7 +708,7 @@ void init(void) {
     putchar(*c++);
   }
   SEI();
-  NMI_VECTOR = (volatile uint16_t)&_handle_nmi;
+  NMI_VECTOR = (volatile uint16_t) & _handle_nmi;
   CIA2ICTRL = 0b10010000;
 }
 
