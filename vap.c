@@ -434,6 +434,15 @@ void handle_single_reg2() {
   datahandler = &handle_single_val2;
 }
 
+void handlestart() {
+  VICII &= 239;
+  setasidstop();
+}
+
+void handlestop() {
+  VICII |= 16;
+}
+
 void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 0
     &noop,                   // 1
@@ -511,8 +520,8 @@ void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 49
     &noop,                   // 4a
     &noop,                   // 4b
-    &setasidstop,            // 4c ASID_CMD_START
-    &setasidstop,            // 4d ASID_CMD_STOP
+    &handlestart,            // 4c ASID_CMD_START
+    &handlestop,             // 4d ASID_CMD_STOP
     &setasidstop,            // 4e ASID_CMD_UPDATE
     &noop,                   // 4f
     &setasidstop,            // 50 ASID_CMD_UPDATE2
