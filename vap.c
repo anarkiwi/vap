@@ -55,6 +55,7 @@ const char VAP_VERSION[] = VAP_NAME VERSION;
 #define SYSEX_START 0xf0
 #define ASID_MANID 0x2d
 #define SYSEX_STOP 0xf7
+#define SONG_POINTER 0xf2
 
 enum ASID_CMD {
   ASID_CMD_START = 0x4c,
@@ -412,6 +413,23 @@ void start_handle_fill() {
   setasidstop();
 }
 
+void handle_sp_val() {
+  ch |= val;
+  sidshadow[reg] = ch;
+  SIDBASE[reg] = ch;
+  datahandler = &noop;
+}
+
+void handle_sp_reg() {
+  reg = ch & ((1 << 5) - 1);
+  if (ch & (1 << 6)) {
+    val = (1 << 7);
+  } else {
+    val = 0;
+  }
+  datahandler = &handle_sp_val;
+}
+
 void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 0
     &noop,                   // 1
@@ -744,6 +762,11 @@ void midiloop(void) {
           break;
         case SYSEX_START:
           datahandler = &handle_manid;
+          break;
+        case SONG_POINTER:
+          datahandler = &handle_sp_reg;
+          break;
+        default:
           break;
         }
       } else {
