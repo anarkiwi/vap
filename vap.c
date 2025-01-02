@@ -55,6 +55,8 @@ const char VAP_VERSION[] = VAP_NAME VERSION;
 #define SYSEX_START 0xf0
 #define ASID_MANID 0x2d
 #define SYSEX_STOP 0xf7
+#define NOTEOFF16 0x8f
+#define NOTEOFF15 0x8e
 
 enum ASID_CMD {
   ASID_CMD_START = 0x4c,
@@ -412,6 +414,26 @@ void start_handle_fill() {
   setasidstop();
 }
 
+#define UPDATESINGLE(B)                                                        \
+  ch |= val;                                                                   \
+  sidshadow[reg] = ch;                                                         \
+  B[reg] = ch;                                                                 \
+  datahandler = &noop;
+
+void handle_single_val() { UPDATESINGLE(SIDBASE); }
+
+void handle_single_reg() {
+  set_reg();
+  datahandler = &handle_single_val;
+}
+
+void handle_single_val2() { UPDATESINGLE(SIDBASE2); }
+
+void handle_single_reg2() {
+  set_reg();
+  datahandler = &handle_single_val2;
+}
+
 void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 0
     &noop,                   // 1
@@ -744,6 +766,14 @@ void midiloop(void) {
           break;
         case SYSEX_START:
           datahandler = &handle_manid;
+          break;
+        case NOTEOFF16:
+          datahandler = &handle_single_reg;
+          break;
+        case NOTEOFF15:
+          datahandler = &handle_single_reg2;
+          break;
+        default:
           break;
         }
       } else {
