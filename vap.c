@@ -750,12 +750,14 @@ void midiloop(void) {
     if (nmi_in == nmi_ack) {
       continue;
     }
-    ++nmi_ack;
 #endif
     VIN;
     for (i = VR; i; --i) {
       buf[++writep] = VR;
     }
+#ifndef POLL
+    nmi_ack = nmi_in;
+#endif
     VOUT;
     while (writep != readp) {
       ch = buf[++readp];
