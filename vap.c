@@ -410,18 +410,24 @@ void start_handle_fill() {
   setasidstop();
 }
 
-#define UPDATESINGLE(B)                                                        \
-  UPDATEREGVAL(B);                                                             \
-  datahandler = &noop;
+void handle_single_reg();
 
-void handle_single_val() { UPDATESINGLE(SIDBASE); }
+void handle_single_val() {
+  UPDATEREGVAL(SIDBASE);
+  datahandler = &handle_single_reg;
+}
 
 void handle_single_reg() {
   reg = ch;
   datahandler = &handle_single_val;
 }
 
-void handle_single_val2() { UPDATESINGLE(SIDBASE2); }
+void handle_single_reg2();
+
+void handle_single_val2() {
+  UPDATEREGVAL(SIDBASE2);
+  datahandler = &handle_single_reg2;
+}
 
 void handle_single_reg2() {
   reg = ch;
