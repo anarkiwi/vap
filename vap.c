@@ -108,7 +108,6 @@ unsigned char reg = 0;
 unsigned char val = 0;
 unsigned char writep = 0;
 unsigned char readp = 0;
-unsigned char cmdp = 0;
 unsigned char ch = 0;
 unsigned char i = 0;
 unsigned char loadmsb = 0;
@@ -177,11 +176,11 @@ unsigned char sidshadow[sizeof(regidmap)] = {};
 
 #define REGMASK(mask, msb, bit, regid)                                         \
   if (mask & bit) {                                                            \
-    val = asidupdate.lsb[lsbp++];                                              \
     if (msb & bit) {                                                           \
-      val |= 0x80;                                                             \
+      sidshadow[regidmap[regid]] = (asidupdate.lsb[lsbp++] | 0x80);            \
+    } else {                                                                   \
+      sidshadow[regidmap[regid]] = asidupdate.lsb[lsbp++];                     \
     }                                                                          \
-    sidshadow[regidmap[regid]] = val;                                          \
   }
 
 #define BYTEREG(mask, msb, regid)                                              \
@@ -195,12 +194,13 @@ unsigned char sidshadow[sizeof(regidmap)] = {};
     REGMASK(mask, msb, 64, regid + 6);                                         \
   }
 
-#define UPDATESID                                                              \
-  lsbp = 0;                                                                    \
-  BYTEREG(asidupdate.mask[0], asidupdate.msb[0], 0);                           \
-  BYTEREG(asidupdate.mask[1], asidupdate.msb[1], 7);                           \
-  BYTEREG(asidupdate.mask[2], asidupdate.msb[2], 14);                          \
+void asidupdatesid() {
+  lsbp = 0;
+  BYTEREG(asidupdate.mask[0], asidupdate.msb[0], 0);
+  BYTEREG(asidupdate.mask[1], asidupdate.msb[1], 7);
+  BYTEREG(asidupdate.mask[2], asidupdate.msb[2], 14);
   BYTEREG(asidupdate.mask[3], asidupdate.msb[3], 21);
+}
 
 void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
@@ -299,17 +299,17 @@ void initsid(void) {
 void indirect(void) { asm("jmp (bufferaddr)"); }
 
 void updatesid() {
-  UPDATESID;
+  asidupdatesid();
   SIDSHADOW(SIDBASE);
 }
 
 void updatesid2() {
-  UPDATESID;
+  asidupdatesid();
   SIDSHADOW(SIDBASE2);
 }
 
 void updatebothsid() {
-  UPDATESID;
+  asidupdatesid();
   SIDSHADOW(SIDBASE);
   SIDSHADOW(SIDBASE2);
 }
@@ -742,7 +742,6 @@ void init(void) {
 
 void handle_cmd() {
   cmd = ch;
-  cmdp = readp;
   loadmsb = 0;
   datahandler = &noop;
   stophandler = &noop;
