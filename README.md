@@ -12,5 +12,5 @@ Other ASID sample applications
 -------------------
 
 * [ASID VICE](https://github.com/anarkiwi/asid-vice/) - an fork of VICE, with ASID support.
-* [Inesid](https://inesid.fazibear.me/) - Chrome browser based (plays slowly, same behavior on a real SIDStation)
+* [DeepSID](https://deepsid.chordian.net/) - browser based.
 * [AsidXP](http://www.elektron.se/support/) - works under Wine on Ubuntu 20.04 (after libasound2-plugins:i386)
