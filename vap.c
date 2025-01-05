@@ -103,20 +103,13 @@ struct {
 
 unsigned char buf[256] = {};
 unsigned char cmd = 0;
-unsigned char lsbp = 0;
 unsigned char reg = 0;
-unsigned char val = 0;
-unsigned char writep = 0;
-unsigned char readp = 0;
 unsigned char ch = 0;
-unsigned char i = 0;
 unsigned char loadmsb = 0;
 unsigned char loadmask = 0;
 unsigned char col = 0;
 unsigned char nmi_in = 0;
-unsigned char nmi_ack = 0;
 unsigned char updatep = 0;
-uint16_t j = 0;
 
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
 volatile unsigned char *loadbuffer = 0;
@@ -195,7 +188,7 @@ unsigned char sidshadow[sizeof(regidmap)] = {};
   }
 
 void asidupdatesid() {
-  lsbp = 0;
+  unsigned char lsbp = 0;
   BYTEREG(asidupdate.mask[0], asidupdate.msb[0], 0);
   BYTEREG(asidupdate.mask[1], asidupdate.msb[1], 7);
   BYTEREG(asidupdate.mask[2], asidupdate.msb[2], 14);
@@ -232,7 +225,7 @@ inline void handle_load_ch(void (*const x)(void)) {
 }
 
 inline void handle_fill_buffer(void (*const x)(void), void (*const y)(void)) {
-  j = fillconfig.count;
+  uint16_t j = fillconfig.count;
   loadbuffer = bufferaddr;
   if (x) {
     x();
@@ -264,7 +257,7 @@ void reustash() { REU_COMMAND = 0b10010000; }
 
 inline void manage_reurect(void (*const x)(void)) {
   // transfer length must be a multiple of rectconfig.size
-  j = *REU_TRANSFER_LEN;
+  uint16_t j = *REU_TRANSFER_LEN;
   while (j) {
     // Must reset transfer length on every transfer.
     *REU_TRANSFER_LEN = rectconfig.size;
@@ -290,6 +283,7 @@ void asidstop() {
 void setasidstop() { stophandler = &asidstop; }
 
 void initsid(void) {
+  unsigned char i = 0;
   for (i = 0; i < SIDREGSIZE; ++i) {
     SIDBASE[i] = 0;
     SIDBASE2[i] = 0;
@@ -314,26 +308,22 @@ void updatebothsid() {
   SIDSHADOW(SIDBASE2);
 }
 
-inline void set_reg() {
-  if (ch & (1 << 6)) {
-    val = (1 << 7);
-    reg = ch & ((1 << 6) - 1);
-  } else {
-    reg = ch;
-    val = 0;
-  }
-}
+#define UPDATEREGVAL(B)                                                        \
+  if (reg & (1 << 6)) {                                                        \
+    reg &= ((1 << 6) - 1);                                                     \
+    ch |= 0x80;                                                                \
+  }                                                                            \
+  sidshadow[reg] = ch;                                                         \
+  B[reg] = ch;
 
 #define UPDATESHADOW(S, R, V, B)                                               \
   void R();                                                                    \
   void V() {                                                                   \
-    ch |= val;                                                                 \
-    sidshadow[reg] = ch;                                                       \
-    B[reg] = ch;                                                               \
+    UPDATEREGVAL(B);                                                           \
     datahandler = &R;                                                          \
   }                                                                            \
   void R() {                                                                   \
-    set_reg();                                                                 \
+    reg = ch;                                                                  \
     datahandler = &V;                                                          \
   }                                                                            \
   void S() {                                                                   \
@@ -377,7 +367,7 @@ void start_handle_addr() {
 }
 
 void calcrect() {
-  i = rectconfig.inc;
+  unsigned char i = rectconfig.inc;
   rectconfig.skip = 0;
   while (i--) {
     rectconfig.skip += rectconfig.start - rectconfig.size;
@@ -415,22 +405,20 @@ void start_handle_fill() {
 }
 
 #define UPDATESINGLE(B)                                                        \
-  ch |= val;                                                                   \
-  sidshadow[reg] = ch;                                                         \
-  B[reg] = ch;                                                                 \
+  UPDATEREGVAL(B);                                                             \
   datahandler = &noop;
 
 void handle_single_val() { UPDATESINGLE(SIDBASE); }
 
 void handle_single_reg() {
-  set_reg();
+  reg = ch;
   datahandler = &handle_single_val;
 }
 
 void handle_single_val2() { UPDATESINGLE(SIDBASE2); }
 
 void handle_single_reg2() {
-  set_reg();
+  reg = ch;
   datahandler = &handle_single_val2;
 }
 
@@ -757,6 +745,11 @@ void handle_manid() {
 }
 
 void midiloop(void) {
+  volatile unsigned char writep = 0;
+  volatile unsigned char readp = 0;
+  volatile unsigned char nmi_ack = 0;
+  unsigned char i = 0;
+
   for (;;) {
 #ifndef POLL
     if (nmi_in == nmi_ack) {

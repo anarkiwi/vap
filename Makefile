@@ -1,5 +1,5 @@
 VERSION := $(shell git describe --tags --abbrev=0)
-CFLAGS := -Os -fnonreentrant -flto -DVERSION=\"${VERSION}\"
+CFLAGS := -O2 -fnonreentrant -flto -DVERSION=\"${VERSION}\"
 SOURCES := vap.c vessel.h Makefile
 PRGS := vap-poll.prg vap.prg
 
