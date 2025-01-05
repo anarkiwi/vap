@@ -101,7 +101,7 @@ struct {
   uint16_t count;
 } copyconfig;
 
-unsigned char buf[256] = {};
+unsigned char buf[255] = {};
 unsigned char cmd = 0;
 unsigned char reg = 0;
 unsigned char ch = 0;
@@ -755,9 +755,8 @@ void midiloop(void) {
 #ifndef POLL
   volatile unsigned char nmi_ack = 0;
 #endif
-  volatile unsigned char writep = 0;
-  volatile unsigned char readp = 0;
   unsigned char i = 0;
+  unsigned char c = 0;
 
   for (;;) {
 #ifndef POLL
@@ -766,15 +765,16 @@ void midiloop(void) {
     }
 #endif
     VIN;
-    for (i = VR; i; --i) {
-      buf[++writep] = VR;
+    c = VR;
+    for (i = c; i; --i) {
+      buf[i] = VR;
     }
 #ifndef POLL
     nmi_ack = nmi_in;
 #endif
     VOUT;
-    while (writep != readp) {
-      ch = buf[++readp];
+    for (i = c; i; --i) {
+      ch = buf[i];
       if (ch & 0x80) {
         switch (ch) {
         case SYSEX_STOP:
