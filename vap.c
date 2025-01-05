@@ -116,6 +116,7 @@ unsigned char loadmask = 0;
 unsigned char col = 0;
 unsigned char nmi_in = 0;
 unsigned char nmi_ack = 0;
+unsigned char updatep = 0;
 uint16_t j = 0;
 
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
@@ -165,14 +166,13 @@ const unsigned char regidmap[] = {
     18, // ID 27
 };
 
-struct {
+volatile struct {
   unsigned char mask[4];
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
 } asidupdate;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
-unsigned char regupdate[sizeof(regidmap)] = {};
 #define SIDSHADOW(b) memcpy((void *)b, sidshadow, sizeof(sidshadow))
 
 #define REGMASK(mask, msb, bit, regid)                                         \
@@ -202,7 +202,7 @@ unsigned char regupdate[sizeof(regidmap)] = {};
   BYTEREG(asidupdate.mask[2], asidupdate.msb[2], 14);                          \
   BYTEREG(asidupdate.mask[3], asidupdate.msb[3], 21);
 
-void handle_load7() { *(loadbuffer++) = ch; }
+void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
 inline void rect_skip() {
   if (!--col) {
@@ -442,8 +442,8 @@ void handlestart() {
 void handlestop() { VICII |= 16; }
 
 void handleupdate() {
-  loadbuffer = (volatile unsigned char *)&asidupdate;
-  datahandler = &handle_load7;
+  updatep = 0;
+  datahandler = &handle_loadupdate;
   setasidstop();
 }
 
