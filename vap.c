@@ -103,11 +103,7 @@ struct {
 
 unsigned char buf[256] = {};
 unsigned char cmd = 0;
-unsigned char flagp = 0;
-unsigned char msbp = 0;
 unsigned char lsbp = 0;
-unsigned char regidflags = 0;
-unsigned char msbs = 0;
 unsigned char reg = 0;
 unsigned char val = 0;
 unsigned char writep = 0;
@@ -169,40 +165,44 @@ const unsigned char regidmap[] = {
     18, // ID 27
 };
 
+struct {
+  unsigned char mask[4];
+  unsigned char msb[4];
+  unsigned char lsb[sizeof(regidmap)];
+} asidupdate;
+
 unsigned char sidshadow[sizeof(regidmap)] = {};
 unsigned char regupdate[sizeof(regidmap)] = {};
 #define SIDSHADOW(b) memcpy((void *)b, sidshadow, sizeof(sidshadow))
 
-#define REGMASK(base, mask, regid)                                             \
-  if (regidflags & mask) {                                                     \
-    val = buf[lsbp++];                                                         \
-    if (msbs & mask) {                                                         \
+#define REGMASK(mask, msb, bit, regid)                                         \
+  if (mask & bit) {                                                            \
+    val = asidupdate.lsb[lsbp++];                                              \
+    if (msb & bit) {                                                           \
       val |= 0x80;                                                             \
     }                                                                          \
-    base[regidmap[regid]] = val;                                               \
+    sidshadow[regidmap[regid]] = val;                                          \
   }
 
-#define BYTEREG(base, regid)                                                   \
-  regidflags = buf[flagp++];                                                   \
-  msbs = buf[msbp++];                                                          \
-  if (regidflags) {                                                            \
-    REGMASK(base, 1, regid + 0);                                               \
-    REGMASK(base, 2, regid + 1);                                               \
-    REGMASK(base, 4, regid + 2);                                               \
-    REGMASK(base, 8, regid + 3);                                               \
-    REGMASK(base, 16, regid + 4);                                              \
-    REGMASK(base, 32, regid + 5);                                              \
-    REGMASK(base, 64, regid + 6);                                              \
+#define BYTEREG(mask, msb, regid)                                              \
+  if (mask) {                                                                  \
+    REGMASK(mask, msb, 1, regid + 0);                                          \
+    REGMASK(mask, msb, 2, regid + 1);                                          \
+    REGMASK(mask, msb, 4, regid + 2);                                          \
+    REGMASK(mask, msb, 8, regid + 3);                                          \
+    REGMASK(mask, msb, 16, regid + 4);                                         \
+    REGMASK(mask, msb, 32, regid + 5);                                         \
+    REGMASK(mask, msb, 64, regid + 6);                                         \
   }
 
-#define UPDATESID(base)                                                        \
-  flagp = cmdp + 1;                                                            \
-  msbp = flagp + 4;                                                            \
-  lsbp = flagp + 8;                                                            \
-  BYTEREG(base, 0);                                                            \
-  BYTEREG(base, 7);                                                            \
-  BYTEREG(base, 14);                                                           \
-  BYTEREG(base, 21);
+#define UPDATESID                                                              \
+  lsbp = 0;                                                                    \
+  BYTEREG(asidupdate.mask[0], asidupdate.msb[0], 0);                           \
+  BYTEREG(asidupdate.mask[1], asidupdate.msb[1], 7);                           \
+  BYTEREG(asidupdate.mask[2], asidupdate.msb[2], 14);                          \
+  BYTEREG(asidupdate.mask[3], asidupdate.msb[3], 21);
+
+void handle_load7() { *(loadbuffer++) = ch; }
 
 inline void rect_skip() {
   if (!--col) {
@@ -299,17 +299,17 @@ void initsid(void) {
 void indirect(void) { asm("jmp (bufferaddr)"); }
 
 void updatesid() {
-  UPDATESID(sidshadow);
+  UPDATESID;
   SIDSHADOW(SIDBASE);
 }
 
 void updatesid2() {
-  UPDATESID(sidshadow);
+  UPDATESID;
   SIDSHADOW(SIDBASE2);
 }
 
 void updatebothsid() {
-  UPDATESID(sidshadow);
+  UPDATESID;
   SIDSHADOW(SIDBASE);
   SIDSHADOW(SIDBASE2);
 }
@@ -439,8 +439,12 @@ void handlestart() {
   setasidstop();
 }
 
-void handlestop() {
-  VICII |= 16;
+void handlestop() { VICII |= 16; }
+
+void handleupdate() {
+  loadbuffer = (volatile unsigned char *)&asidupdate;
+  datahandler = &handle_load7;
+  setasidstop();
 }
 
 void (*const asidstartcmdhandler[])(void) = {
@@ -522,10 +526,10 @@ void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 4b
     &handlestart,            // 4c ASID_CMD_START
     &handlestop,             // 4d ASID_CMD_STOP
-    &setasidstop,            // 4e ASID_CMD_UPDATE
+    &handleupdate,           // 4e ASID_CMD_UPDATE
     &noop,                   // 4f
-    &setasidstop,            // 50 ASID_CMD_UPDATE2
-    &setasidstop,            // 51 ASID_CMD_UPDATE_BOTH
+    &handleupdate,           // 50 ASID_CMD_UPDATE2
+    &handleupdate,           // 51 ASID_CMD_UPDATE_BOTH
     &setasidstop,            // 52 ASID_CMD_RUN_BUFFER
     &start_handle_load,      // 53 ASID_CMD_LOAD_BUFFER
     &start_handle_addr,      // 54 ASID_CMD_ADDR_BUFFER
