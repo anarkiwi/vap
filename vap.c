@@ -165,7 +165,12 @@ volatile struct {
 } asidupdate;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
-#define SIDSHADOW(b) memcpy((void *)b, sidshadow, sizeof(sidshadow))
+void SIDSHADOW(volatile unsigned char *b) {
+  unsigned char i = 0;
+  for (i = 0; i < sizeof(sidshadow); ++i) {
+    b[i] = sidshadow[i];
+  }
+}
 
 #define REGMASK(mask, msb, bit, regid)                                         \
   if (mask & bit) {                                                            \
@@ -287,6 +292,7 @@ void initsid(void) {
   for (i = 0; i < SIDREGSIZE; ++i) {
     SIDBASE[i] = 0;
     SIDBASE2[i] = 0;
+    sidshadow[i] = 0;
   }
 }
 
@@ -719,6 +725,7 @@ void init(void) {
   memset(&rectconfig, 0, sizeof(rectconfig));
   memset(&fillconfig, 0, sizeof(fillconfig));
   memset(&copyconfig, 0, sizeof(copyconfig));
+  memset(&sidshadow, 0, sizeof(sidshadow));
   const char *c = VAP_VERSION;
   while (*c) {
     putchar(*c++);
