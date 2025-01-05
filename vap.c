@@ -745,9 +745,11 @@ void handle_manid() {
 }
 
 void midiloop(void) {
+#ifndef POLL
+  volatile unsigned char nmi_ack = 0;
+#endif
   volatile unsigned char writep = 0;
   volatile unsigned char readp = 0;
-  volatile unsigned char nmi_ack = 0;
   unsigned char i = 0;
 
   for (;;) {
