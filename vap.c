@@ -101,26 +101,15 @@ struct {
   uint16_t count;
 } copyconfig;
 
-unsigned char buf[256] = {};
+unsigned char buf[255] = {};
 unsigned char cmd = 0;
-unsigned char flagp = 0;
-unsigned char msbp = 0;
-unsigned char lsbp = 0;
-unsigned char regidflags = 0;
-unsigned char msbs = 0;
 unsigned char reg = 0;
-unsigned char val = 0;
-unsigned char writep = 0;
-unsigned char readp = 0;
-unsigned char cmdp = 0;
 unsigned char ch = 0;
-unsigned char i = 0;
 unsigned char loadmsb = 0;
 unsigned char loadmask = 0;
 unsigned char col = 0;
 unsigned char nmi_in = 0;
-unsigned char nmi_ack = 0;
-uint16_t j = 0;
+unsigned char updatep = 0;
 
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
 volatile unsigned char *loadbuffer = 0;
@@ -169,40 +158,49 @@ const unsigned char regidmap[] = {
     18, // ID 27
 };
 
+volatile struct {
+  unsigned char mask[4];
+  unsigned char msb[4];
+  unsigned char lsb[sizeof(regidmap)];
+} asidupdate;
+
 unsigned char sidshadow[sizeof(regidmap)] = {};
-unsigned char regupdate[sizeof(regidmap)] = {};
-#define SIDSHADOW(b) memcpy((void *)b, sidshadow, sizeof(sidshadow))
+void SIDSHADOW(volatile unsigned char *b) {
+  unsigned char i = 0;
+  for (i = 0; i < sizeof(sidshadow); ++i) {
+    b[i] = sidshadow[i];
+  }
+}
 
-#define REGMASK(base, mask, regid)                                             \
-  if (regidflags & mask) {                                                     \
-    val = buf[lsbp++];                                                         \
-    if (msbs & mask) {                                                         \
-      val |= 0x80;                                                             \
+#define REGMASK(mask, msb, bit, regid)                                         \
+  if (mask & bit) {                                                            \
+    if (msb & bit) {                                                           \
+      sidshadow[regidmap[regid]] = (asidupdate.lsb[lsbp++] | 0x80);            \
+    } else {                                                                   \
+      sidshadow[regidmap[regid]] = asidupdate.lsb[lsbp++];                     \
     }                                                                          \
-    base[regidmap[regid]] = val;                                               \
   }
 
-#define BYTEREG(base, regid)                                                   \
-  regidflags = buf[flagp++];                                                   \
-  msbs = buf[msbp++];                                                          \
-  if (regidflags) {                                                            \
-    REGMASK(base, 1, regid + 0);                                               \
-    REGMASK(base, 2, regid + 1);                                               \
-    REGMASK(base, 4, regid + 2);                                               \
-    REGMASK(base, 8, regid + 3);                                               \
-    REGMASK(base, 16, regid + 4);                                              \
-    REGMASK(base, 32, regid + 5);                                              \
-    REGMASK(base, 64, regid + 6);                                              \
+#define BYTEREG(mask, msb, regid)                                              \
+  if (mask) {                                                                  \
+    REGMASK(mask, msb, 1, regid + 0);                                          \
+    REGMASK(mask, msb, 2, regid + 1);                                          \
+    REGMASK(mask, msb, 4, regid + 2);                                          \
+    REGMASK(mask, msb, 8, regid + 3);                                          \
+    REGMASK(mask, msb, 16, regid + 4);                                         \
+    REGMASK(mask, msb, 32, regid + 5);                                         \
+    REGMASK(mask, msb, 64, regid + 6);                                         \
   }
 
-#define UPDATESID(base)                                                        \
-  flagp = cmdp + 1;                                                            \
-  msbp = flagp + 4;                                                            \
-  lsbp = flagp + 8;                                                            \
-  BYTEREG(base, 0);                                                            \
-  BYTEREG(base, 7);                                                            \
-  BYTEREG(base, 14);                                                           \
-  BYTEREG(base, 21);
+void asidupdatesid() {
+  unsigned char lsbp = 0;
+  BYTEREG(asidupdate.mask[0], asidupdate.msb[0], 0);
+  BYTEREG(asidupdate.mask[1], asidupdate.msb[1], 7);
+  BYTEREG(asidupdate.mask[2], asidupdate.msb[2], 14);
+  BYTEREG(asidupdate.mask[3], asidupdate.msb[3], 21);
+}
+
+void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
 inline void rect_skip() {
   if (!--col) {
@@ -232,7 +230,7 @@ inline void handle_load_ch(void (*const x)(void)) {
 }
 
 inline void handle_fill_buffer(void (*const x)(void), void (*const y)(void)) {
-  j = fillconfig.count;
+  uint16_t j = fillconfig.count;
   loadbuffer = bufferaddr;
   if (x) {
     x();
@@ -264,7 +262,7 @@ void reustash() { REU_COMMAND = 0b10010000; }
 
 inline void manage_reurect(void (*const x)(void)) {
   // transfer length must be a multiple of rectconfig.size
-  j = *REU_TRANSFER_LEN;
+  uint16_t j = *REU_TRANSFER_LEN;
   while (j) {
     // Must reset transfer length on every transfer.
     *REU_TRANSFER_LEN = rectconfig.size;
@@ -290,50 +288,48 @@ void asidstop() {
 void setasidstop() { stophandler = &asidstop; }
 
 void initsid(void) {
+  unsigned char i = 0;
   for (i = 0; i < SIDREGSIZE; ++i) {
     SIDBASE[i] = 0;
     SIDBASE2[i] = 0;
+    sidshadow[i] = 0;
   }
 }
 
 void indirect(void) { asm("jmp (bufferaddr)"); }
 
 void updatesid() {
-  UPDATESID(sidshadow);
+  asidupdatesid();
   SIDSHADOW(SIDBASE);
 }
 
 void updatesid2() {
-  UPDATESID(sidshadow);
+  asidupdatesid();
   SIDSHADOW(SIDBASE2);
 }
 
 void updatebothsid() {
-  UPDATESID(sidshadow);
+  asidupdatesid();
   SIDSHADOW(SIDBASE);
   SIDSHADOW(SIDBASE2);
 }
 
-inline void set_reg() {
-  if (ch & (1 << 6)) {
-    val = (1 << 7);
-    reg = ch & ((1 << 6) - 1);
-  } else {
-    reg = ch;
-    val = 0;
-  }
-}
+#define UPDATEREGVAL(B)                                                        \
+  if (reg & (1 << 6)) {                                                        \
+    reg &= ((1 << 6) - 1);                                                     \
+    ch |= 0x80;                                                                \
+  }                                                                            \
+  sidshadow[reg] = ch;                                                         \
+  B[reg] = ch;
 
 #define UPDATESHADOW(S, R, V, B)                                               \
   void R();                                                                    \
   void V() {                                                                   \
-    ch |= val;                                                                 \
-    sidshadow[reg] = ch;                                                       \
-    B[reg] = ch;                                                               \
+    UPDATEREGVAL(B);                                                           \
     datahandler = &R;                                                          \
   }                                                                            \
   void R() {                                                                   \
-    set_reg();                                                                 \
+    reg = ch;                                                                  \
     datahandler = &V;                                                          \
   }                                                                            \
   void S() {                                                                   \
@@ -377,7 +373,7 @@ void start_handle_addr() {
 }
 
 void calcrect() {
-  i = rectconfig.inc;
+  unsigned char i = rectconfig.inc;
   rectconfig.skip = 0;
   while (i--) {
     rectconfig.skip += rectconfig.start - rectconfig.size;
@@ -415,22 +411,20 @@ void start_handle_fill() {
 }
 
 #define UPDATESINGLE(B)                                                        \
-  ch |= val;                                                                   \
-  sidshadow[reg] = ch;                                                         \
-  B[reg] = ch;                                                                 \
+  UPDATEREGVAL(B);                                                             \
   datahandler = &noop;
 
 void handle_single_val() { UPDATESINGLE(SIDBASE); }
 
 void handle_single_reg() {
-  set_reg();
+  reg = ch;
   datahandler = &handle_single_val;
 }
 
 void handle_single_val2() { UPDATESINGLE(SIDBASE2); }
 
 void handle_single_reg2() {
-  set_reg();
+  reg = ch;
   datahandler = &handle_single_val2;
 }
 
@@ -439,8 +433,12 @@ void handlestart() {
   setasidstop();
 }
 
-void handlestop() {
-  VICII |= 16;
+void handlestop() { VICII |= 16; }
+
+void handleupdate() {
+  updatep = 0;
+  datahandler = &handle_loadupdate;
+  setasidstop();
 }
 
 void (*const asidstartcmdhandler[])(void) = {
@@ -522,10 +520,10 @@ void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 4b
     &handlestart,            // 4c ASID_CMD_START
     &handlestop,             // 4d ASID_CMD_STOP
-    &setasidstop,            // 4e ASID_CMD_UPDATE
+    &handleupdate,           // 4e ASID_CMD_UPDATE
     &noop,                   // 4f
-    &setasidstop,            // 50 ASID_CMD_UPDATE2
-    &setasidstop,            // 51 ASID_CMD_UPDATE_BOTH
+    &handleupdate,           // 50 ASID_CMD_UPDATE2
+    &handleupdate,           // 51 ASID_CMD_UPDATE_BOTH
     &setasidstop,            // 52 ASID_CMD_RUN_BUFFER
     &start_handle_load,      // 53 ASID_CMD_LOAD_BUFFER
     &start_handle_addr,      // 54 ASID_CMD_ADDR_BUFFER
@@ -727,6 +725,7 @@ void init(void) {
   memset(&rectconfig, 0, sizeof(rectconfig));
   memset(&fillconfig, 0, sizeof(fillconfig));
   memset(&copyconfig, 0, sizeof(copyconfig));
+  memset(&sidshadow, 0, sizeof(sidshadow));
   const char *c = VAP_VERSION;
   while (*c) {
     putchar(*c++);
@@ -738,7 +737,6 @@ void init(void) {
 
 void handle_cmd() {
   cmd = ch;
-  cmdp = readp;
   loadmsb = 0;
   datahandler = &noop;
   stophandler = &noop;
@@ -754,6 +752,12 @@ void handle_manid() {
 }
 
 void midiloop(void) {
+#ifndef POLL
+  volatile unsigned char nmi_ack = 0;
+#endif
+  unsigned char i = 0;
+  unsigned char c = 0;
+
   for (;;) {
 #ifndef POLL
     if (nmi_in == nmi_ack) {
@@ -761,15 +765,16 @@ void midiloop(void) {
     }
 #endif
     VIN;
-    for (i = VR; i; --i) {
-      buf[++writep] = VR;
+    c = VR;
+    for (i = c; i; --i) {
+      buf[i] = VR;
     }
 #ifndef POLL
     nmi_ack = nmi_in;
 #endif
     VOUT;
-    while (writep != readp) {
-      ch = buf[++readp];
+    for (i = c; i; --i) {
+      ch = buf[i];
       if (ch & 0x80) {
         switch (ch) {
         case SYSEX_STOP:
