@@ -1,4 +1,4 @@
-VERSION := $(shell git describe --tags --abbrev=0)
+VERSION := $(shell git describe --tags)
 CFLAGS := -Wall -O3 -fnonreentrant -flto -DVERSION=\"${VERSION}\"
 SOURCES := vap.c vessel.h Makefile
 PRGS := vap-poll.prg vap.prg
@@ -12,6 +12,7 @@ vap-poll.prg: $(SOURCES)
 	/usr/local/llvm-mos/bin/mos-c64-clang $(CFLAGS) -DPOLL -o $@ $<
 
 vap.d64: $(PRGS)
+	@echo version ${VERSION}
 	c1541 -format diskname,id d64 vap.d64 -attach vap.d64 -write vap.prg vap -write vap-poll.prg vap-poll
 
 clean:

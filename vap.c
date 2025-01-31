@@ -20,6 +20,7 @@
 
 #include "vessel.h"
 #include <6502.h>
+#include <c64.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -32,31 +33,31 @@
 
 const char VAP_VERSION[] = VAP_NAME VERSION;
 
-#define CLOCK_ACK VW(0xF8)
-
 #define RUN_BUFFER 0xc000
 #define REU_COMMAND (*((volatile unsigned char *)0xdf01))
 #define REU_CONTROL (*((volatile unsigned char *)0xdf0a))
 #define REU_HOST_BASE ((volatile uint16_t *)0xdf02)
 #define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
 #define REU_TRANSFER_LEN ((volatile uint16_t *)0xdf07)
-#define VICII (*((volatile unsigned char *)0xd011))
 #define SCREENMEM ((volatile unsigned char *)0x0400)
-#define BORDERCOLOR (*((volatile unsigned char *)0xd020))
 #define SIDBASE ((volatile unsigned char *)0xd400)
 #define SIDBASE2 ((volatile unsigned char *)0xd420)
+#define R6510 (*(volatile unsigned char *)0x01)
 #define SIDREGSIZE 28
 #define UNFIXED_REU_ADDRESSES 0x0
 #define FIX_REU_ADDRESS 0x40
 #define FIX_HOST_ADDRESS 0x80
-#define NMI_VECTOR (*((volatile uint16_t *)0x0318))
-#define CIA2ICTRL (*((volatile unsigned char *)0xdd0d))
+#define NMI_VECTOR (*((volatile uint16_t *)0xfffa))
+#define IRQ_VECTOR (*((volatile uint16_t *)0xfffe))
 
+#define MIDI_CLOCK 0xF8
 #define SYSEX_START 0xf0
 #define ASID_MANID 0x2d
 #define SYSEX_STOP 0xf7
 #define NOTEOFF16 0x8f
 #define NOTEOFF15 0x8e
+
+#define CLOCK_ACK VW(MIDI_CLOCK)
 
 enum ASID_CMD {
   ASID_CMD_START = 0x4c,
@@ -114,9 +115,14 @@ unsigned char updatep = 0;
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
 volatile unsigned char *loadbuffer = 0;
 
+#define ACK_VIC_IRQ asm("asl %[r]" : : [r] "i"((const uint16_t) & (VIC.irr)));
+#define ACK_CIA_IRQ(X) asm("bit %[r]" : : [r] "i"((const uint16_t) & (X)));
+#define ACK_CIA1_IRQ ACK_CIA_IRQ(CIA1.icr)
+#define ACK_CIA2_IRQ ACK_CIA_IRQ(CIA2.icr)
+
 void __attribute__((interrupt)) _handle_nmi() {
-  asm("bit $dd0d"); // ack NMI
-  BORDERCOLOR = ++nmi_in;
+  ACK_CIA2_IRQ;
+  VIC.bordercolor = ++nmi_in;
 }
 
 void noop() {}
@@ -124,6 +130,7 @@ void noop() {}
 void (*datahandler)(void) = &noop;
 void (*stophandler)(void) = &noop;
 
+const unsigned char sidregs = 25;
 const unsigned char regidmap[] = {
     0, // ID 0
     1, // ID 1
@@ -165,39 +172,38 @@ volatile struct {
 } asidupdate;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
-void SIDSHADOW(volatile unsigned char *b) {
+unsigned char sidshadow2[sizeof(regidmap)] = {};
+
+inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
   unsigned char i = 0;
-  for (i = 0; i < sizeof(sidshadow); ++i) {
-    b[i] = sidshadow[i];
+  for (i = 0; i < sidregs; ++i) {
+    b[i] = shadow[i];
   }
 }
 
-#define REGMASK(mask, msb, bit, regid)                                         \
-  if (mask & bit) {                                                            \
-    if (msb & bit) {                                                           \
-      sidshadow[regidmap[regid]] = (asidupdate.lsb[lsbp++] | 0x80);            \
-    } else {                                                                   \
-      sidshadow[regidmap[regid]] = asidupdate.lsb[lsbp++];                     \
-    }                                                                          \
-  }
+void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
 
-#define BYTEREG(mask, msb, regid)                                              \
-  if (mask) {                                                                  \
-    REGMASK(mask, msb, 1, regid + 0);                                          \
-    REGMASK(mask, msb, 2, regid + 1);                                          \
-    REGMASK(mask, msb, 4, regid + 2);                                          \
-    REGMASK(mask, msb, 8, regid + 3);                                          \
-    REGMASK(mask, msb, 16, regid + 4);                                         \
-    REGMASK(mask, msb, 32, regid + 5);                                         \
-    REGMASK(mask, msb, 64, regid + 6);                                         \
-  }
-
-void asidupdatesid() {
+void asidupdatesid(unsigned char *shadow) {
   unsigned char lsbp = 0;
-  BYTEREG(asidupdate.mask[0], asidupdate.msb[0], 0);
-  BYTEREG(asidupdate.mask[1], asidupdate.msb[1], 7);
-  BYTEREG(asidupdate.mask[2], asidupdate.msb[2], 14);
-  BYTEREG(asidupdate.mask[3], asidupdate.msb[3], 21);
+  unsigned char i = 0;
+  unsigned char j = 0;
+  unsigned char regid = 0;
+#pragma unroll
+  for (i = 0; i < 4; ++i) {
+    unsigned char mask = asidupdate.mask[i];
+    unsigned char msb = asidupdate.msb[i];
+    for (j = 0; j < 7; ++j, ++regid) {
+      unsigned char bit = 1 << j;
+      if (mask & bit) {
+        unsigned char reg = regidmap[regid];
+        unsigned char val = asidupdate.lsb[lsbp++];
+        if (msb & bit) {
+          val |= 0x80;
+        }
+        shadow[reg] = val;
+      }
+    }
+  }
 }
 
 void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
@@ -290,28 +296,27 @@ void setasidstop() { stophandler = &asidstop; }
 void initsid(void) {
   unsigned char i = 0;
   for (i = 0; i < SIDREGSIZE; ++i) {
-    SIDBASE[i] = 0;
-    SIDBASE2[i] = 0;
     sidshadow[i] = 0;
   }
+  sidfromshadow(sidshadow, SIDBASE);
+  sidfromshadow(sidshadow, SIDBASE2);
 }
 
 void indirect(void) { asm("jmp (bufferaddr)"); }
 
 void updatesid() {
-  asidupdatesid();
-  SIDSHADOW(SIDBASE);
+  asidupdatesid(sidshadow);
+  sidfromshadow(sidshadow, SIDBASE);
 }
 
 void updatesid2() {
-  asidupdatesid();
-  SIDSHADOW(SIDBASE2);
+  asidupdatesid(sidshadow2);
+  sidfromshadow(sidshadow2, SIDBASE2);
 }
 
 void updatebothsid() {
-  asidupdatesid();
-  SIDSHADOW(SIDBASE);
-  SIDSHADOW(SIDBASE2);
+  updatesid();
+  sidfromshadow(sidshadow, SIDBASE2);
 }
 
 #define UPDATEREGVAL(B)                                                        \
@@ -435,11 +440,14 @@ void handle_single_reg2() {
 }
 
 void handlestart() {
-  VICII &= 239;
+  VIC.ctrl1 &= 0b11101111;
   setasidstop();
 }
 
-void handlestop() { VICII |= 16; }
+void handlestop() {
+  VIC.ctrl1 |= 0b10000;
+  setasidstop();
+}
 
 void handleupdate() {
   updatep = 0;
@@ -724,21 +732,38 @@ void initvessel(void) {
   VOUT;
 }
 
+void set_cia_timer(uint16_t v) {
+  SEI();
+  CIA1.icr = 0b01111111; // disable all CIA1 interrupts
+  ACK_CIA1_IRQ;
+  CIA1.cra &= 0b11111110; // disable timer A
+  CIA1.icr = 0b10000001;  // enable timer A interrupt
+  volatile uint16_t *timer = (uint16_t *)(&CIA1.ta_lo);
+  *timer = v;
+  CIA1.cra = 0b10000001; // start timer A
+  CLI();
+}
+
 void init(void) {
   asm("jsr $e544"); // clear screen
   initsid();
-  initvessel();
   memset(&rectconfig, 0, sizeof(rectconfig));
   memset(&fillconfig, 0, sizeof(fillconfig));
   memset(&copyconfig, 0, sizeof(copyconfig));
-  memset(&sidshadow, 0, sizeof(sidshadow));
   const char *c = VAP_VERSION;
   while (*c) {
     putchar(*c++);
   }
   SEI();
+  R6510 = 0b00000101; // disable kernal + basic, makes new handlers visible
   NMI_VECTOR = (volatile uint16_t) & _handle_nmi;
-  CIA2ICTRL = 0b10010000;
+  IRQ_VECTOR = (volatile uint16_t) & _handle_irq;
+  VIC.imr = 0; // disable VIC II interrupts.
+  ACK_VIC_IRQ;
+  CIA2.icr = 0b10010000; // set CIA2 interrupt source to FLAG2 only
+  ACK_CIA2_IRQ;
+  set_cia_timer(19656);
+  initvessel();
 }
 
 void handle_cmd() {
