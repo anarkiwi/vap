@@ -131,175 +131,7 @@ void setasidstop() { stophandler = &asidstop; }
 void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
 #ifdef VAP_FULL
-struct {
-  unsigned char start; // number of positions to skip to new row (e.g. 40)
-  unsigned char size;  // size of a row
-  unsigned char inc;   // number of rows to increment
-  uint16_t skip;       // number of addresses to skip per row
-} rectconfig;
-
-struct {
-  unsigned char val;
-  uint16_t count;
-} fillconfig;
-
-struct {
-  unsigned char *from;
-  uint16_t count;
-} copyconfig;
-
-
-inline void initfull() {
-  memset(&rectconfig, 0, sizeof(rectconfig));
-  memset(&fillconfig, 0, sizeof(fillconfig));
-  memset(&copyconfig, 0, sizeof(copyconfig));
-}
-
-inline void rect_skip() {
-  if (!--col) {
-    col = rectconfig.size;
-    loadbuffer += rectconfig.skip;
-  }
-}
-
-inline void rect_init() { col = rectconfig.size; }
-
-inline void handle_load_ch(void (*const x)(void)) {
-  if (loadmsb) {
-    if (loadmask & 0x01) {
-      ch |= 0x80;
-    }
-    loadmask >>= 1;
-    *loadbuffer = ch;
-    ++loadbuffer;
-    --loadmsb;
-    if (x) {
-      x();
-    }
-  } else {
-    loadmsb = 7;
-    loadmask = ch;
-  }
-}
-
-inline void handle_fill_buffer(void (*const x)(void), void (*const y)(void)) {
-  uint16_t j = fillconfig.count;
-  loadbuffer = bufferaddr;
-  if (x) {
-    x();
-  }
-  while (j--) {
-    *(loadbuffer++) = fillconfig.val;
-    if (y) {
-      y();
-    }
-  }
-}
-
-inline void handle_copy_buffer(void (*const x)(void), void (*const y)(void)) {
-  loadbuffer = bufferaddr;
-  if (x) {
-    x();
-  }
-  while (copyconfig.count--) {
-    *(loadbuffer++) = *(copyconfig.from++);
-    if (y) {
-      y();
-    }
-  }
-}
-
-void reufetch() { REU_COMMAND = 0b10010001; }
-
-void reustash() { REU_COMMAND = 0b10010000; }
-
-inline void manage_reurect(void (*const x)(void)) {
-  // transfer length must be a multiple of rectconfig.size
-  uint16_t j = *REU_TRANSFER_LEN;
-  while (j) {
-    // Must reset transfer length on every transfer.
-    *REU_TRANSFER_LEN = rectconfig.size;
-    x();
-    j -= rectconfig.size;
-    *REU_HOST_BASE += rectconfig.skip;
-  }
-}
-
-void reustashrect() { manage_reurect(reustash); }
-
-void reufetchrect() { manage_reurect(reufetch); }
-
-void indirect(void) { asm("jmp (bufferaddr)"); }
-
-void fillbuffer() { handle_fill_buffer(NULL, NULL); }
-
-void fillrectbuffer() { handle_fill_buffer(&rect_init, &rect_skip); }
-
-void copybuffer() { handle_copy_buffer(NULL, NULL); }
-
-void copyrectbuffer() { handle_copy_buffer(&rect_init, &rect_skip); }
-
-void handle_load() { handle_load_ch(NULL); }
-
-void handle_rect_load() { handle_load_ch(&rect_skip); }
-
-void start_handle_load() {
-  datahandler = &handle_load;
-  loadbuffer = bufferaddr;
-  setasidstop();
-}
-
-void start_handle_load_rect() {
-  datahandler = &handle_load;
-  loadbuffer = bufferaddr;
-  datahandler = &handle_rect_load;
-  rect_init();
-  setasidstop();
-}
-
-void start_handle_addr() {
-  datahandler = &handle_load;
-  loadbuffer = (unsigned char *)&bufferaddr;
-  setasidstop();
-}
-
-void calcrect() {
-  unsigned char i = rectconfig.inc;
-  rectconfig.skip = 0;
-  while (i--) {
-    rectconfig.skip += rectconfig.start - rectconfig.size;
-  }
-}
-
-void start_handle_addr_rect() {
-  datahandler = &handle_load;
-  loadbuffer = (unsigned char *)&rectconfig;
-  setasidstop();
-}
-
-inline void start_reu(uint8_t control) {
-  datahandler = &handle_load;
-  loadbuffer = REU_ADDR_BASE;
-  REU_CONTROL = control;
-  *(uint16_t *)REU_HOST_BASE = (uint16_t)bufferaddr;
-  setasidstop();
-}
-
-void start_handle_reu() { start_reu(UNFIXED_REU_ADDRESSES); }
-
-void start_handle_reu_fill() { start_reu(FIX_REU_ADDRESS); }
-
-void start_handle_copy() {
-  datahandler = &handle_load;
-  loadbuffer = (unsigned char *)&copyconfig;
-  setasidstop();
-}
-
-void start_handle_fill() {
-  datahandler = &handle_load;
-  loadbuffer = (unsigned char *)&fillconfig;
-  setasidstop();
-}
+#include "vap-full.h"
 #endif
 
 inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
@@ -422,7 +254,6 @@ void handleupdate() {
   setasidstop();
 }
 
-
 #ifdef VAP_FULL
 #define HANDLE_FULL(X) X
 #else
@@ -430,89 +261,89 @@ void handleupdate() {
 #endif
 
 void (*const asidstartcmdhandler[])(void) = {
-    &noop,                   // 0
-    &noop,                   // 1
-    &noop,                   // 2
-    &noop,                   // 3
-    &noop,                   // 4
-    &noop,                   // 5
-    &noop,                   // 6
-    &noop,                   // 7
-    &noop,                   // 8
-    &noop,                   // 9
-    &noop,                   // a
-    &noop,                   // b
-    &noop,                   // c
-    &noop,                   // d
-    &noop,                   // e
-    &noop,                   // f
-    &noop,                   // 10
-    &noop,                   // 11
-    &noop,                   // 12
-    &noop,                   // 13
-    &noop,                   // 14
-    &noop,                   // 15
-    &noop,                   // 16
-    &noop,                   // 17
-    &noop,                   // 18
-    &noop,                   // 19
-    &noop,                   // 1a
-    &noop,                   // 1b
-    &noop,                   // 1c
-    &noop,                   // 1d
-    &noop,                   // 1e
-    &noop,                   // 1f
-    &noop,                   // 20
-    &noop,                   // 21
-    &noop,                   // 22
-    &noop,                   // 23
-    &noop,                   // 24
-    &noop,                   // 25
-    &noop,                   // 26
-    &noop,                   // 27
-    &noop,                   // 28
-    &noop,                   // 29
-    &noop,                   // 2a
-    &noop,                   // 2b
-    &noop,                   // 2c
-    &noop,                   // 2d
-    &noop,                   // 2e
-    &noop,                   // 2f
-    &noop,                   // 30
-    &noop,                   // 31
-    &noop,                   // 32
-    &noop,                   // 33
-    &noop,                   // 34
-    &noop,                   // 35
-    &noop,                   // 36
-    &noop,                   // 37
-    &noop,                   // 38
-    &noop,                   // 39
-    &noop,                   // 3a
-    &noop,                   // 3b
-    &noop,                   // 3c
-    &noop,                   // 3d
-    &noop,                   // 3e
-    &noop,                   // 3f
-    &noop,                   // 40
-    &noop,                   // 41
-    &noop,                   // 42
-    &noop,                   // 43
-    &noop,                   // 44
-    &noop,                   // 45
-    &noop,                   // 46
-    &noop,                   // 47
-    &noop,                   // 48
-    &noop,                   // 49
-    &noop,                   // 4a
-    &noop,                   // 4b
-    &handlestart,            // 4c ASID_CMD_START
-    &handlestop,             // 4d ASID_CMD_STOP
-    &handleupdate,           // 4e ASID_CMD_UPDATE
-    &noop,                   // 4f
-    &handleupdate,           // 50 ASID_CMD_UPDATE2
-    &handleupdate,           // 51 ASID_CMD_UPDATE_BOTH
-    HANDLE_FULL(&setasidstop), // 52 ASID_CMD_RUN_BUFFER
+    &noop,                                // 0
+    &noop,                                // 1
+    &noop,                                // 2
+    &noop,                                // 3
+    &noop,                                // 4
+    &noop,                                // 5
+    &noop,                                // 6
+    &noop,                                // 7
+    &noop,                                // 8
+    &noop,                                // 9
+    &noop,                                // a
+    &noop,                                // b
+    &noop,                                // c
+    &noop,                                // d
+    &noop,                                // e
+    &noop,                                // f
+    &noop,                                // 10
+    &noop,                                // 11
+    &noop,                                // 12
+    &noop,                                // 13
+    &noop,                                // 14
+    &noop,                                // 15
+    &noop,                                // 16
+    &noop,                                // 17
+    &noop,                                // 18
+    &noop,                                // 19
+    &noop,                                // 1a
+    &noop,                                // 1b
+    &noop,                                // 1c
+    &noop,                                // 1d
+    &noop,                                // 1e
+    &noop,                                // 1f
+    &noop,                                // 20
+    &noop,                                // 21
+    &noop,                                // 22
+    &noop,                                // 23
+    &noop,                                // 24
+    &noop,                                // 25
+    &noop,                                // 26
+    &noop,                                // 27
+    &noop,                                // 28
+    &noop,                                // 29
+    &noop,                                // 2a
+    &noop,                                // 2b
+    &noop,                                // 2c
+    &noop,                                // 2d
+    &noop,                                // 2e
+    &noop,                                // 2f
+    &noop,                                // 30
+    &noop,                                // 31
+    &noop,                                // 32
+    &noop,                                // 33
+    &noop,                                // 34
+    &noop,                                // 35
+    &noop,                                // 36
+    &noop,                                // 37
+    &noop,                                // 38
+    &noop,                                // 39
+    &noop,                                // 3a
+    &noop,                                // 3b
+    &noop,                                // 3c
+    &noop,                                // 3d
+    &noop,                                // 3e
+    &noop,                                // 3f
+    &noop,                                // 40
+    &noop,                                // 41
+    &noop,                                // 42
+    &noop,                                // 43
+    &noop,                                // 44
+    &noop,                                // 45
+    &noop,                                // 46
+    &noop,                                // 47
+    &noop,                                // 48
+    &noop,                                // 49
+    &noop,                                // 4a
+    &noop,                                // 4b
+    &handlestart,                         // 4c ASID_CMD_START
+    &handlestop,                          // 4d ASID_CMD_STOP
+    &handleupdate,                        // 4e ASID_CMD_UPDATE
+    &noop,                                // 4f
+    &handleupdate,                        // 50 ASID_CMD_UPDATE2
+    &handleupdate,                        // 51 ASID_CMD_UPDATE_BOTH
+    HANDLE_FULL(&setasidstop),            // 52 ASID_CMD_RUN_BUFFER
     HANDLE_FULL(&start_handle_load),      // 53 ASID_CMD_LOAD_BUFFER
     HANDLE_FULL(&start_handle_addr),      // 54 ASID_CMD_ADDR_BUFFER
     HANDLE_FULL(&start_handle_load_rect), // 55 ASID_CMD_LOAD_RECT_BUFFER
@@ -527,126 +358,126 @@ void (*const asidstartcmdhandler[])(void) = {
     HANDLE_FULL(&start_handle_reu),       // 5e ASID_CMD_REU_STASH_BUFFER_RECT
     HANDLE_FULL(&start_handle_reu),       // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
     HANDLE_FULL(&start_handle_reu_fill),  // 60 ASID_CMD_REU_FILL_BUFFER_RECT
-    &noop,                   // 61
-    &noop,                   // 62
-    &noop,                   // 63
-    &noop,                   // 64
-    &noop,                   // 65
-    &noop,                   // 66
-    &noop,                   // 67
-    &noop,                   // 68
-    &noop,                   // 69
-    &noop,                   // 6a
-    &noop,                   // 6b
-    &start_handle_reg,       // 6c ASID_CMD_UPDATE_REG
-    &start_handle_reg2,      // 6d ASID_CMD_UPDATE2_REG
-    &noop,                   // 6e
-    &noop,                   // 6f
-    &noop,                   // 70
-    &noop,                   // 71
-    &noop,                   // 72
-    &noop,                   // 73
-    &noop,                   // 74
-    &noop,                   // 75
-    &noop,                   // 76
-    &noop,                   // 77
-    &noop,                   // 78
-    &noop,                   // 79
-    &noop,                   // 7a
-    &noop,                   // 7b
-    &noop,                   // 7c
-    &noop,                   // 7d
-    &noop,                   // 7e
-    &noop,                   // 7f
+    &noop,                                // 61
+    &noop,                                // 62
+    &noop,                                // 63
+    &noop,                                // 64
+    &noop,                                // 65
+    &noop,                                // 66
+    &noop,                                // 67
+    &noop,                                // 68
+    &noop,                                // 69
+    &noop,                                // 6a
+    &noop,                                // 6b
+    &start_handle_reg,                    // 6c ASID_CMD_UPDATE_REG
+    &start_handle_reg2,                   // 6d ASID_CMD_UPDATE2_REG
+    &noop,                                // 6e
+    &noop,                                // 6f
+    &noop,                                // 70
+    &noop,                                // 71
+    &noop,                                // 72
+    &noop,                                // 73
+    &noop,                                // 74
+    &noop,                                // 75
+    &noop,                                // 76
+    &noop,                                // 77
+    &noop,                                // 78
+    &noop,                                // 79
+    &noop,                                // 7a
+    &noop,                                // 7b
+    &noop,                                // 7c
+    &noop,                                // 7d
+    &noop,                                // 7e
+    &noop,                                // 7f
 };
 
 void (*const asidstopcmdhandler[])(void) = {
-    &noop,           // 0
-    &noop,           // 1
-    &noop,           // 2
-    &noop,           // 3
-    &noop,           // 4
-    &noop,           // 5
-    &noop,           // 6
-    &noop,           // 7
-    &noop,           // 8
-    &noop,           // 9
-    &noop,           // a
-    &noop,           // b
-    &noop,           // c
-    &noop,           // d
-    &noop,           // e
-    &noop,           // f
-    &noop,           // 10
-    &noop,           // 11
-    &noop,           // 12
-    &noop,           // 13
-    &noop,           // 14
-    &noop,           // 15
-    &noop,           // 16
-    &noop,           // 17
-    &noop,           // 18
-    &noop,           // 19
-    &noop,           // 1a
-    &noop,           // 1b
-    &noop,           // 1c
-    &noop,           // 1d
-    &noop,           // 1e
-    &noop,           // 1f
-    &noop,           // 20
-    &noop,           // 21
-    &noop,           // 22
-    &noop,           // 23
-    &noop,           // 24
-    &noop,           // 25
-    &noop,           // 26
-    &noop,           // 27
-    &noop,           // 28
-    &noop,           // 29
-    &noop,           // 2a
-    &noop,           // 2b
-    &noop,           // 2c
-    &noop,           // 2d
-    &noop,           // 2e
-    &noop,           // 2f
-    &noop,           // 30
-    &noop,           // 31
-    &noop,           // 32
-    &noop,           // 33
-    &noop,           // 34
-    &noop,           // 35
-    &noop,           // 36
-    &noop,           // 37
-    &noop,           // 38
-    &noop,           // 39
-    &noop,           // 3a
-    &noop,           // 3b
-    &noop,           // 3c
-    &noop,           // 3d
-    &noop,           // 3e
-    &noop,           // 3f
-    &noop,           // 40
-    &noop,           // 41
-    &noop,           // 42
-    &noop,           // 43
-    &noop,           // 44
-    &noop,           // 45
-    &noop,           // 46
-    &noop,           // 47
-    &noop,           // 48
-    &noop,           // 49
-    &noop,           // 4a
-    &noop,           // 4b
-    &initsid,        // 4c ASID_CMD_START
-    &initsid,        // 4d ASID_CMD_STOP
-    &updatesid,      // 4e ASID_CMD_UPDATE
-    &noop,           // 4f
-    &updatesid2,     // 50 ASID_CMD_UPDATE2
-    &updatebothsid,  // 51 ASID_CMD_UPDATE_BOTH
+    &noop,                        // 0
+    &noop,                        // 1
+    &noop,                        // 2
+    &noop,                        // 3
+    &noop,                        // 4
+    &noop,                        // 5
+    &noop,                        // 6
+    &noop,                        // 7
+    &noop,                        // 8
+    &noop,                        // 9
+    &noop,                        // a
+    &noop,                        // b
+    &noop,                        // c
+    &noop,                        // d
+    &noop,                        // e
+    &noop,                        // f
+    &noop,                        // 10
+    &noop,                        // 11
+    &noop,                        // 12
+    &noop,                        // 13
+    &noop,                        // 14
+    &noop,                        // 15
+    &noop,                        // 16
+    &noop,                        // 17
+    &noop,                        // 18
+    &noop,                        // 19
+    &noop,                        // 1a
+    &noop,                        // 1b
+    &noop,                        // 1c
+    &noop,                        // 1d
+    &noop,                        // 1e
+    &noop,                        // 1f
+    &noop,                        // 20
+    &noop,                        // 21
+    &noop,                        // 22
+    &noop,                        // 23
+    &noop,                        // 24
+    &noop,                        // 25
+    &noop,                        // 26
+    &noop,                        // 27
+    &noop,                        // 28
+    &noop,                        // 29
+    &noop,                        // 2a
+    &noop,                        // 2b
+    &noop,                        // 2c
+    &noop,                        // 2d
+    &noop,                        // 2e
+    &noop,                        // 2f
+    &noop,                        // 30
+    &noop,                        // 31
+    &noop,                        // 32
+    &noop,                        // 33
+    &noop,                        // 34
+    &noop,                        // 35
+    &noop,                        // 36
+    &noop,                        // 37
+    &noop,                        // 38
+    &noop,                        // 39
+    &noop,                        // 3a
+    &noop,                        // 3b
+    &noop,                        // 3c
+    &noop,                        // 3d
+    &noop,                        // 3e
+    &noop,                        // 3f
+    &noop,                        // 40
+    &noop,                        // 41
+    &noop,                        // 42
+    &noop,                        // 43
+    &noop,                        // 44
+    &noop,                        // 45
+    &noop,                        // 46
+    &noop,                        // 47
+    &noop,                        // 48
+    &noop,                        // 49
+    &noop,                        // 4a
+    &noop,                        // 4b
+    &initsid,                     // 4c ASID_CMD_START
+    &initsid,                     // 4d ASID_CMD_STOP
+    &updatesid,                   // 4e ASID_CMD_UPDATE
+    &noop,                        // 4f
+    &updatesid2,                  // 50 ASID_CMD_UPDATE2
+    &updatebothsid,               // 51 ASID_CMD_UPDATE_BOTH
     HANDLE_FULL(&indirect),       // 52 ASID_CMD_RUN_BUFFER
-    &noop,           // 53 ASID_CMD_LOAD_BUFFER
-    &noop,           // 54 ASID_CMD_ADDR_BUFFER
-    &noop,           // 55 ASID_CMD_LOAD_RECT_BUFFER
+    &noop,                        // 53 ASID_CMD_LOAD_BUFFER
+    &noop,                        // 54 ASID_CMD_ADDR_BUFFER
+    &noop,                        // 55 ASID_CMD_LOAD_RECT_BUFFER
     HANDLE_FULL(&calcrect),       // 56 ASID_CMD_ADDR_RECT_BUFFER
     HANDLE_FULL(&fillbuffer),     // 57 ASID_CMD_FILL_BUFFER
     HANDLE_FULL(&fillrectbuffer), // 58 ASID_CMD_FILL_RECT_BUFFER
@@ -658,37 +489,37 @@ void (*const asidstopcmdhandler[])(void) = {
     HANDLE_FULL(&reustashrect),   // 5e ASID_CMD_REU_STASH_BUFFER_RECT
     HANDLE_FULL(&reufetchrect),   // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
     HANDLE_FULL(&reufetchrect),   // 60 ASID_CMD_REU_FILL_BUFFER_RECT
-    &noop,           // 61
-    &noop,           // 62
-    &noop,           // 63
-    &noop,           // 64
-    &noop,           // 65
-    &noop,           // 66
-    &noop,           // 67
-    &noop,           // 68
-    &noop,           // 69
-    &noop,           // 6a
-    &noop,           // 6b
-    &noop,           // 6c ASID_CMD_UPDATE_REG
-    &noop,           // 6d ASID_CMD_UPDATE2_REG
-    &noop,           // 6e
-    &noop,           // 6f
-    &noop,           // 70
-    &noop,           // 71
-    &noop,           // 72
-    &noop,           // 73
-    &noop,           // 74
-    &noop,           // 75
-    &noop,           // 76
-    &noop,           // 77
-    &noop,           // 78
-    &noop,           // 79
-    &noop,           // 7a
-    &noop,           // 7b
-    &noop,           // 7c
-    &noop,           // 7d
-    &noop,           // 7e
-    &noop,           // 7f
+    &noop,                        // 61
+    &noop,                        // 62
+    &noop,                        // 63
+    &noop,                        // 64
+    &noop,                        // 65
+    &noop,                        // 66
+    &noop,                        // 67
+    &noop,                        // 68
+    &noop,                        // 69
+    &noop,                        // 6a
+    &noop,                        // 6b
+    &noop,                        // 6c ASID_CMD_UPDATE_REG
+    &noop,                        // 6d ASID_CMD_UPDATE2_REG
+    &noop,                        // 6e
+    &noop,                        // 6f
+    &noop,                        // 70
+    &noop,                        // 71
+    &noop,                        // 72
+    &noop,                        // 73
+    &noop,                        // 74
+    &noop,                        // 75
+    &noop,                        // 76
+    &noop,                        // 77
+    &noop,                        // 78
+    &noop,                        // 79
+    &noop,                        // 7a
+    &noop,                        // 7b
+    &noop,                        // 7c
+    &noop,                        // 7d
+    &noop,                        // 7e
+    &noop,                        // 7f
 };
 
 void __attribute__((interrupt)) _handle_nmi() {
