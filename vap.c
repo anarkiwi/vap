@@ -111,12 +111,24 @@ unsigned char sidshadow2[sizeof(regidmap)] = {};
 void noop() {}
 void (*datahandler)(void) = &noop;
 void (*stophandler)(void) = &noop;
+void (*const asidstopcmdhandler[])(void);
 
 volatile struct {
   unsigned char mask[4];
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
 } asidupdate;
+
+void asidstop() {
+  (*asidstopcmdhandler[cmd])();
+  CLOCK_ACK;
+  datahandler = &noop;
+  stophandler = &noop;
+}
+
+void setasidstop() { stophandler = &asidstop; }
+
+void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
 struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
@@ -134,38 +146,6 @@ struct {
   unsigned char *from;
   uint16_t count;
 } copyconfig;
-
-inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
-  unsigned char i = 0;
-  for (i = 0; i < sidregs; ++i) {
-    b[i] = shadow[i];
-  }
-}
-
-void asidupdatesid(unsigned char *shadow) {
-  unsigned char lsbp = 0;
-  unsigned char i = 0;
-  unsigned char j = 0;
-  unsigned char regid = 0;
-#pragma unroll
-  for (i = 0; i < 4; ++i) {
-    unsigned char mask = asidupdate.mask[i];
-    unsigned char msb = asidupdate.msb[i];
-    for (j = 0; j < 7; ++j, ++regid) {
-      unsigned char bit = 1 << j;
-      if (mask & bit) {
-        unsigned char reg = regidmap[regid];
-        unsigned char val = asidupdate.lsb[lsbp++];
-        if (msb & bit) {
-          val |= 0x80;
-        }
-        shadow[reg] = val;
-      }
-    }
-  }
-}
-
-void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
 inline void rect_skip() {
   if (!--col) {
@@ -241,26 +221,6 @@ void reustashrect() { manage_reurect(reustash); }
 
 void reufetchrect() { manage_reurect(reufetch); }
 
-void (*const asidstopcmdhandler[])(void);
-
-void asidstop() {
-  (*asidstopcmdhandler[cmd])();
-  CLOCK_ACK;
-  datahandler = &noop;
-  stophandler = &noop;
-}
-
-void setasidstop() { stophandler = &asidstop; }
-
-void initsid(void) {
-  unsigned char i = 0;
-  for (i = 0; i < SIDREGSIZE; ++i) {
-    sidshadow[i] = 0;
-  }
-  sidfromshadow(sidshadow, SIDBASE);
-  sidfromshadow(sidshadow, SIDBASE2);
-}
-
 void indirect(void) { asm("jmp (bufferaddr)"); }
 
 void fillbuffer() { handle_fill_buffer(NULL, NULL); }
@@ -331,6 +291,45 @@ void start_handle_fill() {
   datahandler = &handle_load;
   loadbuffer = (unsigned char *)&fillconfig;
   setasidstop();
+}
+
+inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
+  unsigned char i = 0;
+  for (i = 0; i < sidregs; ++i) {
+    b[i] = shadow[i];
+  }
+}
+
+void asidupdatesid(unsigned char *shadow) {
+  unsigned char lsbp = 0;
+  unsigned char i = 0;
+  unsigned char j = 0;
+  unsigned char regid = 0;
+#pragma unroll
+  for (i = 0; i < 4; ++i) {
+    unsigned char mask = asidupdate.mask[i];
+    unsigned char msb = asidupdate.msb[i];
+    for (j = 0; j < 7; ++j, ++regid) {
+      unsigned char bit = 1 << j;
+      if (mask & bit) {
+        unsigned char reg = regidmap[regid];
+        unsigned char val = asidupdate.lsb[lsbp++];
+        if (msb & bit) {
+          val |= 0x80;
+        }
+        shadow[reg] = val;
+      }
+    }
+  }
+}
+
+void initsid(void) {
+  unsigned char i = 0;
+  for (i = 0; i < SIDREGSIZE; ++i) {
+    sidshadow[i] = 0;
+  }
+  sidfromshadow(sidshadow, SIDBASE);
+  sidfromshadow(sidshadow, SIDBASE2);
 }
 
 void updatesid() {
