@@ -18,6 +18,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#define RUN_BUFFER 0xc000
+#define REU_COMMAND (*((volatile unsigned char *)0xdf01))
+#define REU_CONTROL (*((volatile unsigned char *)0xdf0a))
+#define REU_HOST_BASE ((volatile uint16_t *)0xdf02)
+#define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
+#define REU_TRANSFER_LEN ((volatile uint16_t *)0xdf07)
+#define UNFIXED_REU_ADDRESSES 0x0
+#define FIX_REU_ADDRESS 0x40
+#define FIX_HOST_ADDRESS 0x80
+
+unsigned char col = 0;
+volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
+
 struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
   unsigned char size;  // size of a row

@@ -26,28 +26,25 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef POLL
-#define VAP_NAME "VAP-POLL"
+#ifdef FULL
+#define VAP_BASE_NAME "VAP-FULL"
 #else
-#define VAP_NAME "VAP"
+#define VAP_BASE_NAME "VAP"
+#endif
+
+#ifdef POLL
+#define VAP_NAME VAP_BASE_NAME "-POLL"
+#else
+#define VAP_NAME VAP_BASE_NAME
 #endif
 
 const char VAP_VERSION[] = VAP_NAME VERSION;
 
-#define RUN_BUFFER 0xc000
-#define REU_COMMAND (*((volatile unsigned char *)0xdf01))
-#define REU_CONTROL (*((volatile unsigned char *)0xdf0a))
-#define REU_HOST_BASE ((volatile uint16_t *)0xdf02)
-#define REU_ADDR_BASE ((volatile unsigned char *)0xdf04)
-#define REU_TRANSFER_LEN ((volatile uint16_t *)0xdf07)
 #define SCREENMEM ((volatile unsigned char *)0x0400)
 #define SIDBASE ((volatile unsigned char *)0xd400)
 #define SIDBASE2 ((volatile unsigned char *)0xd420)
 #define R6510 (*(volatile unsigned char *)0x01)
 #define SIDREGSIZE 28
-#define UNFIXED_REU_ADDRESSES 0x0
-#define FIX_REU_ADDRESS 0x40
-#define FIX_HOST_ADDRESS 0x80
 #define NMI_VECTOR (*((volatile uint16_t *)0xfffa))
 #define IRQ_VECTOR (*((volatile uint16_t *)0xfffe))
 
@@ -98,11 +95,9 @@ unsigned char reg = 0;
 unsigned char ch = 0;
 unsigned char loadmsb = 0;
 unsigned char loadmask = 0;
-unsigned char col = 0;
 unsigned char nmi_in = 0;
 unsigned char updatep = 0;
 
-volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
 volatile unsigned char *loadbuffer = 0;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
@@ -130,7 +125,7 @@ void setasidstop() { stophandler = &asidstop; }
 
 void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
-#ifdef VAP_FULL
+#ifdef FULL
 #include "vap-full.h"
 #endif
 
@@ -254,7 +249,7 @@ void handleupdate() {
   setasidstop();
 }
 
-#ifdef VAP_FULL
+#ifdef FULL
 #define HANDLE_FULL(X) X
 #else
 #define HANDLE_FULL(X) &noop
@@ -559,7 +554,7 @@ void set_cia_timer(uint16_t v) {
 void init(void) {
   asm("jsr $e544"); // clear screen
   initsid();
-#ifdef VAP_FULL
+#ifdef FULL
   initfull();
 #endif
   const char *c = VAP_VERSION;
