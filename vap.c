@@ -94,7 +94,6 @@ unsigned char cmd = 0;
 unsigned char reg = 0;
 unsigned char ch = 0;
 unsigned char nmi_in = 0;
-unsigned char updatep = 0;
 
 volatile unsigned char *loadbuffer = 0;
 
@@ -121,7 +120,7 @@ void asidstop() {
 
 void setasidstop() { stophandler = &asidstop; }
 
-void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
+void handle_loadupdate() { ((unsigned char *)&asidupdate)[reg++] = ch; }
 
 #ifdef FULL
 #include "vap-full.h"
@@ -242,7 +241,7 @@ void handlestop() {
 }
 
 void handleupdate() {
-  updatep = 0;
+  reg = 0;
   datahandler = &handle_loadupdate;
   setasidstop();
 }
