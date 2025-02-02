@@ -137,18 +137,20 @@ void asidupdatesid(unsigned char *shadow) {
   unsigned char j = 0;
   unsigned char regid = 0;
 #pragma unroll
-  for (i = 0; i < 4; ++i) {
+  for (i = 0; i < 4; ++i, regid += 7) {
     unsigned char mask = asidupdate.mask[i];
-    unsigned char msb = asidupdate.msb[i];
-    for (j = 0; j < 7; ++j, ++regid) {
-      unsigned char bit = 1 << j;
-      if (mask & bit) {
-        unsigned char reg = regidmap[regid];
-        unsigned char val = asidupdate.lsb[lsbp++];
-        if (msb & bit) {
-          val |= 0x80;
+    if (mask) {
+      unsigned char msb = asidupdate.msb[i];
+      for (j = 0; j < 7; ++j) {
+        unsigned char bit = 1 << j;
+        if (mask & bit) {
+          unsigned char reg = regidmap[regid + j];
+          unsigned char val = asidupdate.lsb[lsbp++];
+          if (msb & bit) {
+            val |= 0x80;
+          }
+          shadow[reg] = val;
         }
-        shadow[reg] = val;
       }
     }
   }
