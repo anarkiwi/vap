@@ -28,8 +28,11 @@
 #define FIX_REU_ADDRESS 0x40
 #define FIX_HOST_ADDRESS 0x80
 
+unsigned char loadmsb = 0;
+unsigned char loadmask = 0;
 unsigned char col = 0;
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
+volatile unsigned char *loadbuffer = 0;
 
 struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
@@ -143,6 +146,7 @@ void handle_load() { handle_load_ch(NULL); }
 void handle_rect_load() { handle_load_ch(&rect_skip); }
 
 void start_handle_load() {
+  loadmsb = 0;
   datahandler = &handle_load;
   loadbuffer = bufferaddr;
   setasidstop();

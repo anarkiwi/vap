@@ -93,12 +93,7 @@ unsigned char buf[255] = {};
 unsigned char cmd = 0;
 unsigned char reg = 0;
 unsigned char ch = 0;
-unsigned char loadmsb = 0;
-unsigned char loadmask = 0;
 unsigned char nmi_in = 0;
-unsigned char updatep = 0;
-
-volatile unsigned char *loadbuffer = 0;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
 unsigned char sidshadow2[sizeof(regidmap)] = {};
@@ -123,7 +118,7 @@ void asidstop() {
 
 void setasidstop() { stophandler = &asidstop; }
 
-void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
+void handle_loadupdate() { ((unsigned char *)&asidupdate)[reg++] = ch; }
 
 #ifdef FULL
 #include "vap-full.h"
@@ -142,18 +137,20 @@ void asidupdatesid(unsigned char *shadow) {
   unsigned char j = 0;
   unsigned char regid = 0;
 #pragma unroll
-  for (i = 0; i < 4; ++i) {
+  for (i = 0; i < 4; ++i, regid += 7) {
     unsigned char mask = asidupdate.mask[i];
-    unsigned char msb = asidupdate.msb[i];
-    for (j = 0; j < 7; ++j, ++regid) {
-      unsigned char bit = 1 << j;
-      if (mask & bit) {
-        unsigned char reg = regidmap[regid];
-        unsigned char val = asidupdate.lsb[lsbp++];
-        if (msb & bit) {
-          val |= 0x80;
+    if (mask) {
+      unsigned char msb = asidupdate.msb[i];
+      for (j = 0; j < 7; ++j) {
+        unsigned char bit = 1 << j;
+        if (mask & bit) {
+          unsigned char reg = regidmap[regid + j];
+          unsigned char val = asidupdate.lsb[lsbp++];
+          if (msb & bit) {
+            val |= 0x80;
+          }
+          shadow[reg] = val;
         }
-        shadow[reg] = val;
       }
     }
   }
@@ -244,7 +241,7 @@ void handlestop() {
 }
 
 void handleupdate() {
-  updatep = 0;
+  reg = 0;
   datahandler = &handle_loadupdate;
   setasidstop();
 }
@@ -575,7 +572,6 @@ void init(void) {
 
 void handle_cmd() {
   cmd = ch;
-  loadmsb = 0;
   datahandler = &noop;
   stophandler = &noop;
   (*asidstartcmdhandler[cmd])();
