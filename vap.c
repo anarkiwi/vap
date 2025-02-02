@@ -95,8 +95,6 @@ unsigned char reg = 0;
 unsigned char ch = 0;
 unsigned char nmi_in = 0;
 
-volatile unsigned char *loadbuffer = 0;
-
 unsigned char sidshadow[sizeof(regidmap)] = {};
 unsigned char sidshadow2[sizeof(regidmap)] = {};
 
