@@ -86,6 +86,38 @@ enum ASID_CMD {
   ASID_CMD_UPDATE2_REG = 0x6d,
 };
 
+#define ACK_VIC_IRQ asm("asl %[r]" : : [r] "i"((const uint16_t) & (VIC.irr)));
+#define ACK_CIA_IRQ(X) asm("bit %[r]" : : [r] "i"((const uint16_t) & (X)));
+#define ACK_CIA1_IRQ ACK_CIA_IRQ(CIA1.icr)
+#define ACK_CIA2_IRQ ACK_CIA_IRQ(CIA2.icr)
+const unsigned char sidregs = 25;
+
+unsigned char buf[255] = {};
+unsigned char cmd = 0;
+unsigned char reg = 0;
+unsigned char ch = 0;
+unsigned char loadmsb = 0;
+unsigned char loadmask = 0;
+unsigned char col = 0;
+unsigned char nmi_in = 0;
+unsigned char updatep = 0;
+
+volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
+volatile unsigned char *loadbuffer = 0;
+
+unsigned char sidshadow[sizeof(regidmap)] = {};
+unsigned char sidshadow2[sizeof(regidmap)] = {};
+
+void noop() {}
+void (*datahandler)(void) = &noop;
+void (*stophandler)(void) = &noop;
+
+volatile struct {
+  unsigned char mask[4];
+  unsigned char msb[4];
+  unsigned char lsb[sizeof(regidmap)];
+} asidupdate;
+
 struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
   unsigned char size;  // size of a row
@@ -103,44 +135,12 @@ struct {
   uint16_t count;
 } copyconfig;
 
-unsigned char buf[255] = {};
-unsigned char cmd = 0;
-unsigned char reg = 0;
-unsigned char ch = 0;
-unsigned char loadmsb = 0;
-unsigned char loadmask = 0;
-unsigned char col = 0;
-unsigned char nmi_in = 0;
-unsigned char updatep = 0;
-
-volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
-volatile unsigned char *loadbuffer = 0;
-
-#define ACK_VIC_IRQ asm("asl %[r]" : : [r] "i"((const uint16_t) & (VIC.irr)));
-#define ACK_CIA_IRQ(X) asm("bit %[r]" : : [r] "i"((const uint16_t) & (X)));
-#define ACK_CIA1_IRQ ACK_CIA_IRQ(CIA1.icr)
-#define ACK_CIA2_IRQ ACK_CIA_IRQ(CIA2.icr)
-
 void __attribute__((interrupt)) _handle_nmi() {
   ACK_CIA2_IRQ;
   VIC.bordercolor = ++nmi_in;
 }
 
-void noop() {}
-
-void (*datahandler)(void) = &noop;
-void (*stophandler)(void) = &noop;
-
-const unsigned char sidregs = 25;
-
-volatile struct {
-  unsigned char mask[4];
-  unsigned char msb[4];
-  unsigned char lsb[sizeof(regidmap)];
-} asidupdate;
-
-unsigned char sidshadow[sizeof(regidmap)] = {};
-unsigned char sidshadow2[sizeof(regidmap)] = {};
+void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
 
 inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
   unsigned char i = 0;
@@ -148,8 +148,6 @@ inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
     b[i] = shadow[i];
   }
 }
-
-void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
 
 void asidupdatesid(unsigned char *shadow) {
   unsigned char lsbp = 0;
