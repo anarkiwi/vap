@@ -135,13 +135,6 @@ struct {
   uint16_t count;
 } copyconfig;
 
-void __attribute__((interrupt)) _handle_nmi() {
-  ACK_CIA2_IRQ;
-  VIC.bordercolor = ++nmi_in;
-}
-
-void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
-
 inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
   unsigned char i = 0;
   for (i = 0; i < sidregs; ++i) {
@@ -682,6 +675,13 @@ void (*const asidstopcmdhandler[])(void) = {
     &noop,           // 7e
     &noop,           // 7f
 };
+
+void __attribute__((interrupt)) _handle_nmi() {
+  ACK_CIA2_IRQ;
+  VIC.bordercolor = ++nmi_in;
+}
+
+void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
 
 void initvessel(void) {
   VOUT;
