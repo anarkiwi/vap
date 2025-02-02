@@ -263,47 +263,6 @@ void initsid(void) {
 
 void indirect(void) { asm("jmp (bufferaddr)"); }
 
-void updatesid() {
-  asidupdatesid(sidshadow);
-  sidfromshadow(sidshadow, SIDBASE);
-}
-
-void updatesid2() {
-  asidupdatesid(sidshadow2);
-  sidfromshadow(sidshadow2, SIDBASE2);
-}
-
-void updatebothsid() {
-  updatesid();
-  sidfromshadow(sidshadow, SIDBASE2);
-}
-
-#define UPDATEREGVAL(B)                                                        \
-  if (reg & (1 << 6)) {                                                        \
-    reg &= ((1 << 6) - 1);                                                     \
-    ch |= 0x80;                                                                \
-  }                                                                            \
-  sidshadow[reg] = ch;                                                         \
-  B[reg] = ch;
-
-#define UPDATESHADOW(S, R, V, B)                                               \
-  void R();                                                                    \
-  void V() {                                                                   \
-    UPDATEREGVAL(B);                                                           \
-    datahandler = &R;                                                          \
-  }                                                                            \
-  void R() {                                                                   \
-    reg = ch;                                                                  \
-    datahandler = &V;                                                          \
-  }                                                                            \
-  void S() {                                                                   \
-    datahandler = &R;                                                          \
-    setasidstop();                                                             \
-  }
-
-UPDATESHADOW(start_handle_reg, handle_reg, handle_val, SIDBASE);
-UPDATESHADOW(start_handle_reg2, handle_reg2, handle_val2, SIDBASE2);
-
 void fillbuffer() { handle_fill_buffer(NULL, NULL); }
 
 void fillrectbuffer() { handle_fill_buffer(&rect_init, &rect_skip); }
@@ -373,6 +332,47 @@ void start_handle_fill() {
   loadbuffer = (unsigned char *)&fillconfig;
   setasidstop();
 }
+
+void updatesid() {
+  asidupdatesid(sidshadow);
+  sidfromshadow(sidshadow, SIDBASE);
+}
+
+void updatesid2() {
+  asidupdatesid(sidshadow2);
+  sidfromshadow(sidshadow2, SIDBASE2);
+}
+
+void updatebothsid() {
+  updatesid();
+  sidfromshadow(sidshadow, SIDBASE2);
+}
+
+#define UPDATEREGVAL(B)                                                        \
+  if (reg & (1 << 6)) {                                                        \
+    reg &= ((1 << 6) - 1);                                                     \
+    ch |= 0x80;                                                                \
+  }                                                                            \
+  sidshadow[reg] = ch;                                                         \
+  B[reg] = ch;
+
+#define UPDATESHADOW(S, R, V, B)                                               \
+  void R();                                                                    \
+  void V() {                                                                   \
+    UPDATEREGVAL(B);                                                           \
+    datahandler = &R;                                                          \
+  }                                                                            \
+  void R() {                                                                   \
+    reg = ch;                                                                  \
+    datahandler = &V;                                                          \
+  }                                                                            \
+  void S() {                                                                   \
+    datahandler = &R;                                                          \
+    setasidstop();                                                             \
+  }
+
+UPDATESHADOW(start_handle_reg, handle_reg, handle_val, SIDBASE);
+UPDATESHADOW(start_handle_reg2, handle_reg2, handle_val2, SIDBASE2);
 
 void handle_single_reg();
 
