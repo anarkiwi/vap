@@ -93,8 +93,6 @@ unsigned char buf[255] = {};
 unsigned char cmd = 0;
 unsigned char reg = 0;
 unsigned char ch = 0;
-unsigned char loadmsb = 0;
-unsigned char loadmask = 0;
 unsigned char nmi_in = 0;
 unsigned char updatep = 0;
 
@@ -575,7 +573,6 @@ void init(void) {
 
 void handle_cmd() {
   cmd = ch;
-  loadmsb = 0;
   datahandler = &noop;
   stophandler = &noop;
   (*asidstartcmdhandler[cmd])();
