@@ -130,6 +130,7 @@ void setasidstop() { stophandler = &asidstop; }
 
 void handle_loadupdate() { ((unsigned char *)&asidupdate)[updatep++] = ch; }
 
+#ifdef VAP_FULL
 struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
   unsigned char size;  // size of a row
@@ -146,6 +147,13 @@ struct {
   unsigned char *from;
   uint16_t count;
 } copyconfig;
+
+
+inline void initfull() {
+  memset(&rectconfig, 0, sizeof(rectconfig));
+  memset(&fillconfig, 0, sizeof(fillconfig));
+  memset(&copyconfig, 0, sizeof(copyconfig));
+}
 
 inline void rect_skip() {
   if (!--col) {
@@ -292,6 +300,7 @@ void start_handle_fill() {
   loadbuffer = (unsigned char *)&fillconfig;
   setasidstop();
 }
+#endif
 
 inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
   unsigned char i = 0;
@@ -413,6 +422,13 @@ void handleupdate() {
   setasidstop();
 }
 
+
+#ifdef VAP_FULL
+#define HANDLE_FULL(X) X
+#else
+#define HANDLE_FULL(X) &noop
+#endif
+
 void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 0
     &noop,                   // 1
@@ -496,21 +512,21 @@ void (*const asidstartcmdhandler[])(void) = {
     &noop,                   // 4f
     &handleupdate,           // 50 ASID_CMD_UPDATE2
     &handleupdate,           // 51 ASID_CMD_UPDATE_BOTH
-    &setasidstop,            // 52 ASID_CMD_RUN_BUFFER
-    &start_handle_load,      // 53 ASID_CMD_LOAD_BUFFER
-    &start_handle_addr,      // 54 ASID_CMD_ADDR_BUFFER
-    &start_handle_load_rect, // 55 ASID_CMD_LOAD_RECT_BUFFER
-    &start_handle_addr_rect, // 56 ASID_CMD_ADDR_RECT_BUFFER
-    &start_handle_fill,      // 57 ASID_CMD_FILL_BUFFER
-    &start_handle_fill,      // 58 ASID_CMD_FILL_RECT_BUFFER
-    &start_handle_copy,      // 59 ASID_CMD_COPY_BUFFER
-    &start_handle_copy,      // 5a ASID_CMD_COPY_RECT_BUFFER
-    &start_handle_reu,       // 5b ASID_CMD_REU_STASH_BUFFER
-    &start_handle_reu,       // 5c ASID_CMD_REU_FETCH_BUFFER
-    &start_handle_reu_fill,  // 5d ASID_CMD_REU_FILL_BUFFER
-    &start_handle_reu,       // 5e ASID_CMD_REU_STASH_BUFFER_RECT
-    &start_handle_reu,       // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
-    &start_handle_reu_fill,  // 60 ASID_CMD_REU_FILL_BUFFER_RECT
+    HANDLE_FULL(&setasidstop), // 52 ASID_CMD_RUN_BUFFER
+    HANDLE_FULL(&start_handle_load),      // 53 ASID_CMD_LOAD_BUFFER
+    HANDLE_FULL(&start_handle_addr),      // 54 ASID_CMD_ADDR_BUFFER
+    HANDLE_FULL(&start_handle_load_rect), // 55 ASID_CMD_LOAD_RECT_BUFFER
+    HANDLE_FULL(&start_handle_addr_rect), // 56 ASID_CMD_ADDR_RECT_BUFFER
+    HANDLE_FULL(&start_handle_fill),      // 57 ASID_CMD_FILL_BUFFER
+    HANDLE_FULL(&start_handle_fill),      // 58 ASID_CMD_FILL_RECT_BUFFER
+    HANDLE_FULL(&start_handle_copy),      // 59 ASID_CMD_COPY_BUFFER
+    HANDLE_FULL(&start_handle_copy),      // 5a ASID_CMD_COPY_RECT_BUFFER
+    HANDLE_FULL(&start_handle_reu),       // 5b ASID_CMD_REU_STASH_BUFFER
+    HANDLE_FULL(&start_handle_reu),       // 5c ASID_CMD_REU_FETCH_BUFFER
+    HANDLE_FULL(&start_handle_reu_fill),  // 5d ASID_CMD_REU_FILL_BUFFER
+    HANDLE_FULL(&start_handle_reu),       // 5e ASID_CMD_REU_STASH_BUFFER_RECT
+    HANDLE_FULL(&start_handle_reu),       // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
+    HANDLE_FULL(&start_handle_reu_fill),  // 60 ASID_CMD_REU_FILL_BUFFER_RECT
     &noop,                   // 61
     &noop,                   // 62
     &noop,                   // 63
@@ -627,21 +643,21 @@ void (*const asidstopcmdhandler[])(void) = {
     &noop,           // 4f
     &updatesid2,     // 50 ASID_CMD_UPDATE2
     &updatebothsid,  // 51 ASID_CMD_UPDATE_BOTH
-    &indirect,       // 52 ASID_CMD_RUN_BUFFER
+    HANDLE_FULL(&indirect),       // 52 ASID_CMD_RUN_BUFFER
     &noop,           // 53 ASID_CMD_LOAD_BUFFER
     &noop,           // 54 ASID_CMD_ADDR_BUFFER
     &noop,           // 55 ASID_CMD_LOAD_RECT_BUFFER
-    &calcrect,       // 56 ASID_CMD_ADDR_RECT_BUFFER
-    &fillbuffer,     // 57 ASID_CMD_FILL_BUFFER
-    &fillrectbuffer, // 58 ASID_CMD_FILL_RECT_BUFFER
-    &copybuffer,     // 59 ASID_CMD_COPY_BUFFER
-    &copyrectbuffer, // 5a ASID_CMD_COPY_RECT_BUFFER
-    &reustash,       // 5b ASID_CMD_REU_STASH_BUFFER
-    &reufetch,       // 5c ASID_CMD_REU_FETCH_BUFFER
-    &reufetch,       // 5d ASID_CMD_REU_FILL_BUFFER
-    &reustashrect,   // 5e ASID_CMD_REU_STASH_BUFFER_RECT
-    &reufetchrect,   // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
-    &reufetchrect,   // 60 ASID_CMD_REU_FILL_BUFFER_RECT
+    HANDLE_FULL(&calcrect),       // 56 ASID_CMD_ADDR_RECT_BUFFER
+    HANDLE_FULL(&fillbuffer),     // 57 ASID_CMD_FILL_BUFFER
+    HANDLE_FULL(&fillrectbuffer), // 58 ASID_CMD_FILL_RECT_BUFFER
+    HANDLE_FULL(&copybuffer),     // 59 ASID_CMD_COPY_BUFFER
+    HANDLE_FULL(&copyrectbuffer), // 5a ASID_CMD_COPY_RECT_BUFFER
+    HANDLE_FULL(&reustash),       // 5b ASID_CMD_REU_STASH_BUFFER
+    HANDLE_FULL(&reufetch),       // 5c ASID_CMD_REU_FETCH_BUFFER
+    HANDLE_FULL(&reufetch),       // 5d ASID_CMD_REU_FILL_BUFFER
+    HANDLE_FULL(&reustashrect),   // 5e ASID_CMD_REU_STASH_BUFFER_RECT
+    HANDLE_FULL(&reufetchrect),   // 5f ASID_CMD_REU_FETCH_BUFFER_RECT
+    HANDLE_FULL(&reufetchrect),   // 60 ASID_CMD_REU_FILL_BUFFER_RECT
     &noop,           // 61
     &noop,           // 62
     &noop,           // 63
@@ -712,9 +728,9 @@ void set_cia_timer(uint16_t v) {
 void init(void) {
   asm("jsr $e544"); // clear screen
   initsid();
-  memset(&rectconfig, 0, sizeof(rectconfig));
-  memset(&fillconfig, 0, sizeof(fillconfig));
-  memset(&copyconfig, 0, sizeof(copyconfig));
+#ifdef VAP_FULL
+  initfull();
+#endif
   const char *c = VAP_VERSION;
   while (*c) {
     putchar(*c++);
