@@ -32,6 +32,7 @@ unsigned char loadmsb = 0;
 unsigned char loadmask = 0;
 unsigned char col = 0;
 volatile unsigned char *bufferaddr = (volatile unsigned char *)RUN_BUFFER;
+volatile unsigned char *loadbuffer = 0;
 
 struct {
   unsigned char start; // number of positions to skip to new row (e.g. 40)
