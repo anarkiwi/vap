@@ -1,9 +1,10 @@
 VERSION := $(shell git describe --tags)
 CFLAGS := -Wall -O3 -fnonreentrant -flto -DVERSION=\"${VERSION}\"
 SOURCES := vap.c vap-full.h regid.h vessel.h Makefile
-PRGS := vap-poll.prg vap.prg vap-full.prg vap-full-poll.prg
+PRGS := vap.prg
+# vap-poll.prg vap-full.prg vap-full-poll.prg
 
-all: vap.d64 $(PRGS)
+all: $(PRGS)
 
 vap.prg: $(SOURCES)
 	/usr/local/llvm-mos/bin/mos-c64-clang $(CFLAGS) -o $@ $<

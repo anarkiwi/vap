@@ -89,10 +89,10 @@ enum ASID_CMD {
 #define ACK_CIA2_IRQ ACK_CIA_IRQ(CIA2.icr)
 const unsigned char sidregs = 25;
 
-unsigned char buf[255] = {};
+// unsigned char buf[256] = {};
 unsigned char cmd = 0;
 unsigned char reg = 0;
-unsigned char ch = 0;
+volatile unsigned char ch = 0;
 unsigned char nmi_in = 0;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
@@ -104,6 +104,9 @@ void (*stophandler)(void) = &noop;
 void (*const asidstopcmdhandler[])(void);
 
 volatile struct {
+  unsigned char start;
+  unsigned char manid;
+  unsigned char cmd;
   unsigned char mask[4];
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
@@ -516,7 +519,7 @@ void (*const asidstopcmdhandler[])(void) = {
 
 void __attribute__((interrupt)) _handle_nmi() {
   ACK_CIA2_IRQ;
-  VIC.bordercolor = ++nmi_in;
+  //VIC.bordercolor = ++nmi_in;
 }
 
 void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
@@ -589,8 +592,8 @@ void midiloop(void) {
 #ifndef POLL
   volatile unsigned char nmi_ack = 0;
 #endif
-  unsigned char i = 0;
-  unsigned char c = 0;
+  volatile unsigned char i = 0;
+  volatile unsigned char c = 0;
 
   for (;;) {
 #ifndef POLL
@@ -598,36 +601,37 @@ void midiloop(void) {
       continue;
     }
 #endif
-    VIN;
-    c = VR;
-    for (i = c; i; --i) {
-      buf[i] = VR;
-    }
+    for (;;) {
+      VIN;
+      c = VR;
+      SCREENMEM[1] = ch;
+      if (c == 0) {
 #ifndef POLL
-    nmi_ack = nmi_in;
-#endif
-    VOUT;
-    for (i = c; i; --i) {
-      ch = buf[i];
-      if (ch & 0x80) {
-        switch (ch) {
-        case SYSEX_STOP:
-          (*stophandler)();
-          break;
-        case SYSEX_START:
-          datahandler = &handle_manid;
-          break;
-        case NOTEOFF16:
-          datahandler = &handle_single_reg;
-          break;
-        case NOTEOFF15:
-          datahandler = &handle_single_reg2;
-          break;
-        default:
+        nmi_ack = nmi_in;
+#endif 
+        VOUT;
+        break;
+      }
+      while (c--) {
+        ch = VR;
+        SCREENMEM[0] = ch;
+        if (ch == SYSEX_STOP) {
+          ++VIC.bordercolor;
+          i = 0;
           break;
         }
-      } else {
-        datahandler();
+        ((unsigned char*)&asidupdate)[i++] = ch;
+      }
+      VOUT;
+      if (ch == SYSEX_STOP) {
+        switch (asidupdate.cmd) {
+          case ASID_CMD_UPDATE:
+            updatesid();
+            break;
+          default:
+            initsid();
+            break;
+        }
       }
     }
   }
