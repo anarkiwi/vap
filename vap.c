@@ -93,7 +93,7 @@ const unsigned char sidregs = 25;
 unsigned char cmd = 0;
 unsigned char reg = 0;
 volatile unsigned char ch = 0;
-unsigned char nmi_in = 0;
+volatile unsigned char nmi_in = 0;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
 unsigned char sidshadow2[sizeof(regidmap)] = {};
@@ -519,7 +519,7 @@ void (*const asidstopcmdhandler[])(void) = {
 
 void __attribute__((interrupt)) _handle_nmi() {
   ACK_CIA2_IRQ;
-  //VIC.bordercolor = ++nmi_in;
+  VIC.bordercolor = ++nmi_in;
 }
 
 void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
@@ -600,23 +600,18 @@ void midiloop(void) {
     if (nmi_in == nmi_ack) {
       continue;
     }
-#endif
+    nmi_ack = nmi_in;
+#endif 
     for (;;) {
       VIN;
       c = VR;
-      SCREENMEM[1] = ch;
       if (c == 0) {
-#ifndef POLL
-        nmi_ack = nmi_in;
-#endif 
         VOUT;
         break;
       }
       while (c--) {
         ch = VR;
-        SCREENMEM[0] = ch;
         if (ch == SYSEX_STOP) {
-          ++VIC.bordercolor;
           i = 0;
           break;
         }
@@ -628,10 +623,16 @@ void midiloop(void) {
           case ASID_CMD_UPDATE:
             updatesid();
             break;
-          default:
-            initsid();
+          case ASID_CMD_START:
+            handlestart();
+            break;
+          case ASID_CMD_STOP:
+            handlestop();
             break;
         }
+      }
+      if (c == 0) {
+        break;
       }
     }
   }
