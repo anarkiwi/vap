@@ -130,22 +130,22 @@ void handle_loadupdate() { ((unsigned char *)&asidupdate)[reg++] = ch; }
 #define SHADOWREG(b, shadow, i) b[i] = shadow[i];
 
 #define SIDFROMSHADOW(b, shadow, i)                                            \
-  SHADOWREG(b, shadow, 0 + i);                                                 \
-  SHADOWREG(b, shadow, 1 + i);                                                 \
-  SHADOWREG(b, shadow, 2 + i);                                                 \
-  SHADOWREG(b, shadow, 3 + i);                                                 \
   SHADOWREG(b, shadow, 5 + i);                                                 \
   SHADOWREG(b, shadow, 6 + i);                                                 \
+  SHADOWREG(b, shadow, 2 + i);                                                 \
+  SHADOWREG(b, shadow, 3 + i);                                                 \
+  SHADOWREG(b, shadow, 0 + i);                                                 \
+  SHADOWREG(b, shadow, 1 + i);                                                 \
   SHADOWREG(b, shadow, 4 + i);
 
 inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
-  SIDFROMSHADOW(b, shadow, 0);
-  SIDFROMSHADOW(b, shadow, 7);
-  SIDFROMSHADOW(b, shadow, 14);
   SHADOWREG(b, shadow, 21);
   SHADOWREG(b, shadow, 22);
   SHADOWREG(b, shadow, 23);
   SHADOWREG(b, shadow, 24);
+  SIDFROMSHADOW(b, shadow, 0);
+  SIDFROMSHADOW(b, shadow, 7);
+  SIDFROMSHADOW(b, shadow, 14);
 }
 
 void asidupdatesid(unsigned char *shadow) {
