@@ -184,7 +184,7 @@ void initsid(void) {
 
 void updatesid() {
   asidupdatesid(sidshadow);
-  sidfromshadow(sidshadow, SIDBASE);
+  // sidfromshadow(sidshadow, SIDBASE);
 }
 
 void updatesid2() {
@@ -625,14 +625,18 @@ void midiloop(void) {
       }
       while (c--) {
         ch = VR;
-        if (ch == SYSEX_STOP) {
+        if (ch == MIDI_CLOCK || ch == SYSEX_STOP) {
           i = 0;
           break;
         }
         ((unsigned char *)&asidupdate)[i++] = ch;
       }
       VOUT;
-      if (ch == SYSEX_STOP) {
+      switch (ch) {
+      case MIDI_CLOCK:
+        sidfromshadow(sidshadow, SIDBASE);
+        break;
+      case SYSEX_STOP:
         switch (asidupdate.cmd) {
         case ASID_CMD_UPDATE:
           updatesid();
@@ -644,6 +648,9 @@ void midiloop(void) {
           handlestop();
           break;
         }
+        break;
+      default:
+        break;
       }
       if (c == 0) {
         break;
