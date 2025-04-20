@@ -41,6 +41,8 @@
 const char VAP_VERSION[] = VAP_NAME VERSION;
 
 #define SCREENMEM ((volatile unsigned char *)0x0400)
+#define COUNT ((volatile unsigned char *)(0x0400 + 40))
+#define COUNT2 ((volatile unsigned char *)(0x0400 + 80))
 #define SIDBASE ((volatile unsigned char *)0xd400)
 #define SIDBASE2 ((volatile unsigned char *)0xd420)
 #define R6510 (*(volatile unsigned char *)0x01)
@@ -94,6 +96,7 @@ unsigned char cmd = 0;
 unsigned char reg = 0;
 volatile unsigned char ch = 0;
 volatile unsigned char nmi_in = 0;
+volatile unsigned char dirty = 0;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
 unsigned char sidshadow2[sizeof(regidmap)] = {};
@@ -111,6 +114,15 @@ volatile struct {
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
 } asidupdate;
+
+typedef volatile struct asidregupdate {
+  unsigned char start;
+  unsigned char manid;
+  unsigned char cmd;
+  unsigned char updates[sizeof(regidmap)];
+} asidregupdatetype;
+
+asidregupdatetype *ru = (asidregupdatetype *)&asidupdate;
 
 void asidstop() {
   (*asidstopcmdhandler[cmd])();
@@ -130,22 +142,22 @@ void handle_loadupdate() { ((unsigned char *)&asidupdate)[reg++] = ch; }
 #define SHADOWREG(b, shadow, i) b[i] = shadow[i];
 
 #define SIDFROMSHADOW(b, shadow, i)                                            \
-  SHADOWREG(b, shadow, 5 + i);                                                 \
-  SHADOWREG(b, shadow, 6 + i);                                                 \
-  SHADOWREG(b, shadow, 2 + i);                                                 \
-  SHADOWREG(b, shadow, 3 + i);                                                 \
   SHADOWREG(b, shadow, 0 + i);                                                 \
   SHADOWREG(b, shadow, 1 + i);                                                 \
+  SHADOWREG(b, shadow, 2 + i);                                                 \
+  SHADOWREG(b, shadow, 3 + i);                                                 \
+  SHADOWREG(b, shadow, 5 + i);                                                 \
+  SHADOWREG(b, shadow, 6 + i);                                                 \
   SHADOWREG(b, shadow, 4 + i);
 
 inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
+  SIDFROMSHADOW(b, shadow, 0);
+  SIDFROMSHADOW(b, shadow, 7);
+  SIDFROMSHADOW(b, shadow, 14);
   SHADOWREG(b, shadow, 21);
   SHADOWREG(b, shadow, 22);
   SHADOWREG(b, shadow, 23);
   SHADOWREG(b, shadow, 24);
-  SIDFROMSHADOW(b, shadow, 0);
-  SIDFROMSHADOW(b, shadow, 7);
-  SIDFROMSHADOW(b, shadow, 14);
 }
 
 void asidupdatesid(unsigned char *shadow) {
@@ -184,7 +196,7 @@ void initsid(void) {
 
 void updatesid() {
   asidupdatesid(sidshadow);
-  // sidfromshadow(sidshadow, SIDBASE);
+  sidfromshadow(sidshadow, SIDBASE);
 }
 
 void updatesid2() {
@@ -254,6 +266,7 @@ void handlestart() {
 
 void handlestop() {
   VIC.ctrl1 |= 0b10000;
+  initsid();
   setasidstop();
 }
 
@@ -533,10 +546,17 @@ void (*const asidstopcmdhandler[])(void) = {
 
 void __attribute__((interrupt)) _handle_nmi() {
   ACK_CIA2_IRQ;
+  //if (dirty) {
+  //  sidfromshadow(sidshadow, SIDBASE);
+  //  dirty = 0;
+  // }
   VIC.bordercolor = ++nmi_in;
 }
 
-void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
+void __attribute__((interrupt)) _handle_irq() {
+  ACK_CIA1_IRQ;
+  //sidfromshadow(sidshadow, SIDBASE);
+}
 
 void initvessel(void) {
   VOUT;
@@ -565,7 +585,7 @@ void set_cia_timer(uint16_t v) {
   CLI();
 }
 
-void init(void) {
+void init() {
   asm("jsr $e544"); // clear screen
   initsid();
 #ifdef FULL
@@ -575,6 +595,8 @@ void init(void) {
   while (*c) {
     putchar(*c++);
   }
+  *(uint16_t *)COUNT = 0;
+  *COUNT2 = 0;
   SEI();
   R6510 = 0b00000101; // disable kernal + basic, makes new handlers visible
   NMI_VECTOR = (volatile uint16_t) & _handle_nmi;
@@ -583,7 +605,7 @@ void init(void) {
   ACK_VIC_IRQ;
   CIA2.icr = 0b10010000; // set CIA2 interrupt source to FLAG2 only
   ACK_CIA2_IRQ;
-  set_cia_timer(19656);
+  // set_cia_timer(19656);
   initvessel();
 }
 
@@ -602,6 +624,18 @@ void handle_manid() {
   }
 }
 
+void doru() {
+  for (unsigned char j = 0; ru->updates[j] != SYSEX_STOP; j += 2) {
+    if (ru->updates[j] & 0x40) {
+      (ru->updates[j + 1]) |= 0x80;
+      (ru->updates[j]) ^= 0x40;
+    }
+    sidshadow[ru->updates[j]] = ru->updates[j + 1];
+  }
+  //dirty = 1;
+  sidfromshadow(sidshadow, SIDBASE);
+}
+
 void midiloop(void) {
 #ifndef POLL
   volatile unsigned char nmi_ack = 0;
@@ -616,6 +650,7 @@ void midiloop(void) {
     }
     nmi_ack = nmi_in;
 #endif
+    unsigned char y = 0;
     for (;;) {
       VIN;
       c = VR;
@@ -623,38 +658,41 @@ void midiloop(void) {
         VOUT;
         break;
       }
+      unsigned char x = 0;
       while (c--) {
         ch = VR;
-        if (ch == MIDI_CLOCK || ch == SYSEX_STOP) {
+        ++x;
+        ((unsigned char *)&asidupdate)[i++] = ch;
+        if (ch == SYSEX_STOP) {
           i = 0;
           break;
         }
-        ((unsigned char *)&asidupdate)[i++] = ch;
       }
       VOUT;
-      switch (ch) {
-      case MIDI_CLOCK:
-        sidfromshadow(sidshadow, SIDBASE);
+      (*(uint16_t *)COUNT) += x;
+      switch (asidupdate.cmd) {
+      case ASID_CMD_UPDATE:
+        updatesid();
+        ++y;
         break;
-      case SYSEX_STOP:
-        switch (asidupdate.cmd) {
-        case ASID_CMD_UPDATE:
-          updatesid();
-          break;
-        case ASID_CMD_START:
-          handlestart();
-          break;
-        case ASID_CMD_STOP:
-          handlestop();
-          break;
-        }
+      case ASID_CMD_UPDATE_REG:
+        doru();
+        ++y;
         break;
-      default:
+      case ASID_CMD_START:
+        *COUNT2 = 0;
+        handlestart();
+        break;
+      case ASID_CMD_STOP:
+        handlestop();
         break;
       }
       if (c == 0) {
         break;
       }
+    }
+    if (y > *COUNT2) {
+      *COUNT2 = y;
     }
   }
 }
