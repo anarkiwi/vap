@@ -41,8 +41,6 @@
 const char VAP_VERSION[] = VAP_NAME VERSION;
 
 #define SCREENMEM ((volatile unsigned char *)0x0400)
-#define COUNT ((volatile unsigned char *)(0x0400 + 40))
-#define COUNT2 ((volatile unsigned char *)(0x0400 + 80))
 #define SIDBASE ((volatile unsigned char *)0xd400)
 #define SIDBASE2 ((volatile unsigned char *)0xd420)
 #define R6510 (*(volatile unsigned char *)0x01)
@@ -91,7 +89,7 @@ enum ASID_CMD {
 #define ACK_CIA2_IRQ ACK_CIA_IRQ(CIA2.icr)
 const unsigned char sidregs = 25;
 
-// unsigned char buf[256] = {};
+unsigned char buf[255] = {};
 unsigned char cmd = 0;
 unsigned char reg = 0;
 volatile unsigned char ch = 0;
@@ -558,9 +556,7 @@ void __attribute__((interrupt)) _handle_nmi() {
   VIC.bordercolor = ++nmi_in;
 }
 
-void __attribute__((interrupt)) _handle_irq() {
-  ACK_CIA1_IRQ;
-}
+void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
 
 void initvessel(void) {
   VOUT;
@@ -599,8 +595,6 @@ void init() {
   while (*c) {
     putchar(*c++);
   }
-  *(uint16_t *)COUNT = 0;
-  *COUNT2 = 0;
   SEI();
   R6510 = 0b00000101; // disable kernal + basic, makes new handlers visible
   NMI_VECTOR = (volatile uint16_t) & _handle_nmi;
@@ -642,7 +636,6 @@ void midiloop(void) {
     }
     nmi_ack = nmi_in;
 #endif
-    unsigned char y = 0;
     for (;;) {
       VIN;
       c = VR;
@@ -650,10 +643,8 @@ void midiloop(void) {
         VOUT;
         break;
       }
-      unsigned char x = 0;
       while (c--) {
         ch = VR;
-        ++x;
         ((unsigned char *)&asidupdate)[i++] = ch;
         if (ch == SYSEX_STOP) {
           i = 0;
@@ -661,20 +652,22 @@ void midiloop(void) {
         }
       }
       VOUT;
-      (*(uint16_t *)COUNT) += x;
       switch (asidupdate.cmd) {
       case ASID_CMD_UPDATE:
         updatesid();
-        ++y;
         break;
       case ASID_CMD_UPDATE_REG:
         asidupdateregsid(sidshadow);
         sidfromshadow(sidshadow, SIDBASE);
-        ++y;
+        break;
+      case ASID_CMD_UPDATE2:
+        updatesid2();
+        break;
+      case ASID_CMD_UPDATE2_REG:
+        asidupdateregsid(sidshadow);
+        sidfromshadow(sidshadow, SIDBASE2);
         break;
       case ASID_CMD_START:
-        *(uint16_t *)COUNT = 0;
-        *COUNT2 = 0;
         handlestart();
         break;
       case ASID_CMD_STOP:
@@ -684,9 +677,6 @@ void midiloop(void) {
       if (c == 0) {
         break;
       }
-    }
-    if (y > *COUNT2) {
-      *COUNT2 = y;
     }
   }
 }
