@@ -707,8 +707,8 @@ void midiloop(void) {
         updatesid2();
         break;
       case ASID_CMD_UPDATE2_REG:
-        asidupdateregsid(sidshadow);
-        sidfromshadow(sidshadow, SIDBASE2);
+        asidupdateregsid(sidshadow2);
+        sidfromshadow(sidshadow2, SIDBASE2);
         break;
       case ASID_CMD_START:
         handlestart();
