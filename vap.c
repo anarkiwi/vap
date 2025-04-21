@@ -104,15 +104,17 @@ void (*stophandler)(void) = &noop;
 void (*const asidstopcmdhandler[])(void);
 
 volatile struct {
-  // unsigned char start;
-  // unsigned char manid;
-  // unsigned char cmd;
+#ifndef FULL
+  unsigned char start;
+  unsigned char manid;
+  unsigned char cmd;
+#endif
   unsigned char mask[4];
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
 } asidupdate;
 
-typedef struct asidregupdate {
+typedef volatile struct asidregupdate {
   unsigned char start;
   unsigned char manid;
   unsigned char cmd;
@@ -629,6 +631,7 @@ void midiloop(void) {
   volatile unsigned char i = 0;
   volatile unsigned char c = 0;
 
+#ifdef FULL
   for (;;) {
 #ifndef POLL
     if (nmi_in == nmi_ack) {
@@ -668,6 +671,58 @@ void midiloop(void) {
       }
     }
   }
+#else
+  for (;;) {
+#ifndef POLL
+    if (nmi_in == nmi_ack) {
+      continue;
+    }
+    nmi_ack = nmi_in;
+#endif
+    for (;;) {
+      VIN;
+      c = VR;
+      if (c == 0) {
+        VOUT;
+        break;
+      }
+      while (c--) {
+        ch = VR;
+        ((unsigned char *)&asidupdate)[i++] = ch;
+        if (ch == SYSEX_STOP) {
+          i = 0;
+          break;
+        }
+      }
+      VOUT;
+      switch (asidupdate.cmd) {
+      case ASID_CMD_UPDATE:
+        updatesid();
+        break;
+      case ASID_CMD_UPDATE_REG:
+        asidupdateregsid(sidshadow);
+        sidfromshadow(sidshadow, SIDBASE);
+        break;
+      case ASID_CMD_UPDATE2:
+        updatesid2();
+        break;
+      case ASID_CMD_UPDATE2_REG:
+        asidupdateregsid(sidshadow);
+        sidfromshadow(sidshadow, SIDBASE2);
+        break;
+      case ASID_CMD_START:
+        handlestart();
+        break;
+      case ASID_CMD_STOP:
+        handlestop();
+        break;
+      }
+      if (c == 0) {
+        break;
+      }
+    }
+  }
+#endif
 }
 
 int main(void) {
