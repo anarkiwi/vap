@@ -96,7 +96,6 @@ unsigned char cmd = 0;
 unsigned char reg = 0;
 volatile unsigned char ch = 0;
 volatile unsigned char nmi_in = 0;
-volatile unsigned char dirty = 0;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
 unsigned char sidshadow2[sizeof(regidmap)] = {};
@@ -122,7 +121,7 @@ typedef volatile struct asidregupdate {
   unsigned char updates[sizeof(regidmap)];
 } asidregupdatetype;
 
-asidregupdatetype *ru = (asidregupdatetype *)&asidupdate;
+asidregupdatetype * const ru = (asidregupdatetype * const)&asidupdate;
 
 void asidstop() {
   (*asidstopcmdhandler[cmd])();
@@ -546,16 +545,11 @@ void (*const asidstopcmdhandler[])(void) = {
 
 void __attribute__((interrupt)) _handle_nmi() {
   ACK_CIA2_IRQ;
-  //if (dirty) {
-  //  sidfromshadow(sidshadow, SIDBASE);
-  //  dirty = 0;
-  // }
   VIC.bordercolor = ++nmi_in;
 }
 
 void __attribute__((interrupt)) _handle_irq() {
   ACK_CIA1_IRQ;
-  //sidfromshadow(sidshadow, SIDBASE);
 }
 
 void initvessel(void) {
@@ -624,7 +618,7 @@ void handle_manid() {
   }
 }
 
-void doru() {
+inline void doru() {
   for (unsigned char j = 0; ru->updates[j] != SYSEX_STOP; j += 2) {
     if (ru->updates[j] & 0x40) {
       (ru->updates[j + 1]) |= 0x80;
@@ -632,7 +626,6 @@ void doru() {
     }
     sidshadow[ru->updates[j]] = ru->updates[j + 1];
   }
-  //dirty = 1;
   sidfromshadow(sidshadow, SIDBASE);
 }
 
@@ -680,6 +673,7 @@ void midiloop(void) {
         ++y;
         break;
       case ASID_CMD_START:
+        *(uint16_t *)COUNT = 0;
         *COUNT2 = 0;
         handlestart();
         break;
