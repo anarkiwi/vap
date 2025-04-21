@@ -121,7 +121,7 @@ typedef volatile struct asidregupdate {
   unsigned char updates[sizeof(regidmap)];
 } asidregupdatetype;
 
-asidregupdatetype * const ru = (asidregupdatetype * const)&asidupdate;
+asidregupdatetype *const asidregupdatep = (asidregupdatetype *const)&asidupdate;
 
 void asidstop() {
   (*asidstopcmdhandler[cmd])();
@@ -157,6 +157,16 @@ inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
   SHADOWREG(b, shadow, 22);
   SHADOWREG(b, shadow, 23);
   SHADOWREG(b, shadow, 24);
+}
+
+inline void asidupdateregsid(unsigned char *shadow) {
+  for (unsigned char j = 0; asidregupdatep->updates[j] != SYSEX_STOP; j += 2) {
+    if (asidregupdatep->updates[j] & 0x40) {
+      (asidregupdatep->updates[j + 1]) |= 0x80;
+      (asidregupdatep->updates[j]) ^= 0x40;
+    }
+    shadow[asidregupdatep->updates[j]] = asidregupdatep->updates[j + 1];
+  }
 }
 
 void asidupdatesid(unsigned char *shadow) {
@@ -618,17 +628,6 @@ void handle_manid() {
   }
 }
 
-inline void doru() {
-  for (unsigned char j = 0; ru->updates[j] != SYSEX_STOP; j += 2) {
-    if (ru->updates[j] & 0x40) {
-      (ru->updates[j + 1]) |= 0x80;
-      (ru->updates[j]) ^= 0x40;
-    }
-    sidshadow[ru->updates[j]] = ru->updates[j + 1];
-  }
-  sidfromshadow(sidshadow, SIDBASE);
-}
-
 void midiloop(void) {
 #ifndef POLL
   volatile unsigned char nmi_ack = 0;
@@ -669,7 +668,8 @@ void midiloop(void) {
         ++y;
         break;
       case ASID_CMD_UPDATE_REG:
-        doru();
+        asidupdateregsid(sidshadow);
+        sidfromshadow(sidshadow, SIDBASE);
         ++y;
         break;
       case ASID_CMD_START:
