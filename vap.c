@@ -92,8 +92,8 @@ const unsigned char sidregs = 25;
 unsigned char buf[255] = {};
 unsigned char cmd = 0;
 unsigned char reg = 0;
-unsigned char ch = 0;
-unsigned char nmi_in = 0;
+volatile unsigned char ch = 0;
+volatile unsigned char nmi_in = 0;
 
 unsigned char sidshadow[sizeof(regidmap)] = {};
 unsigned char sidshadow2[sizeof(regidmap)] = {};
@@ -104,10 +104,20 @@ void (*stophandler)(void) = &noop;
 void (*const asidstopcmdhandler[])(void);
 
 volatile struct {
+  unsigned char start;
+  unsigned char manid;
+  unsigned char cmd;
   unsigned char mask[4];
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
 } asidupdate;
+
+typedef struct asidregupdate {
+  unsigned char start;
+  unsigned char manid;
+  unsigned char cmd;
+  unsigned char updates[sizeof(regidmap)];
+} asidregupdatetype;
 
 void asidstop() {
   (*asidstopcmdhandler[cmd])();
@@ -237,6 +247,7 @@ void handlestart() {
 
 void handlestop() {
   VIC.ctrl1 |= 0b10000;
+  initsid();
   setasidstop();
 }
 
@@ -548,7 +559,7 @@ void set_cia_timer(uint16_t v) {
   CLI();
 }
 
-void init(void) {
+void init() {
   asm("jsr $e544"); // clear screen
   initsid();
 #ifdef FULL
@@ -566,7 +577,7 @@ void init(void) {
   ACK_VIC_IRQ;
   CIA2.icr = 0b10010000; // set CIA2 interrupt source to FLAG2 only
   ACK_CIA2_IRQ;
-  set_cia_timer(19656);
+  // set_cia_timer(19656);
   initvessel();
 }
 
@@ -589,8 +600,8 @@ void midiloop(void) {
 #ifndef POLL
   volatile unsigned char nmi_ack = 0;
 #endif
-  unsigned char i = 0;
-  unsigned char c = 0;
+  volatile unsigned char i = 0;
+  volatile unsigned char c = 0;
 
   for (;;) {
 #ifndef POLL
