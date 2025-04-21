@@ -104,9 +104,9 @@ void (*stophandler)(void) = &noop;
 void (*const asidstopcmdhandler[])(void);
 
 volatile struct {
-  unsigned char start;
-  unsigned char manid;
-  unsigned char cmd;
+  // unsigned char start;
+  // unsigned char manid;
+  // unsigned char cmd;
   unsigned char mask[4];
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
@@ -118,6 +118,8 @@ typedef struct asidregupdate {
   unsigned char cmd;
   unsigned char updates[sizeof(regidmap)];
 } asidregupdatetype;
+
+asidregupdatetype *const asidregupdatep = (asidregupdatetype *const)&asidupdate;
 
 void asidstop() {
   (*asidstopcmdhandler[cmd])();
@@ -138,6 +140,16 @@ inline void sidfromshadow(unsigned char *shadow, volatile unsigned char *b) {
   unsigned char i = 0;
   for (i = 0; i < sidregs; ++i) {
     b[i] = shadow[i];
+  }
+}
+
+inline void asidupdateregsid(unsigned char *shadow) {
+  for (unsigned char j = 0; asidregupdatep->updates[j] != SYSEX_STOP; j += 2) {
+    if (asidregupdatep->updates[j] & 0x40) {
+      (asidregupdatep->updates[j + 1]) |= 0x80;
+      (asidregupdatep->updates[j]) ^= 0x40;
+    }
+    shadow[asidregupdatep->updates[j]] = asidregupdatep->updates[j + 1];
   }
 }
 
