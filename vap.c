@@ -632,8 +632,45 @@ void midiloop(void) {
   volatile unsigned char c = 0;
 
 #ifdef FULL
-
-
+  for (;;) {
+#ifndef POLL
+    if (nmi_in == nmi_ack) {
+      continue;
+    }
+#endif
+    VIN;
+    c = VR;
+    for (i = c; i; --i) {
+      buf[i] = VR;
+    }
+#ifndef POLL
+    nmi_ack = nmi_in;
+#endif
+    VOUT;
+    for (i = c; i; --i) {
+      ch = buf[i];
+      if (ch & 0x80) {
+        switch (ch) {
+        case SYSEX_STOP:
+          (*stophandler)();
+          break;
+        case SYSEX_START:
+          datahandler = &handle_manid;
+          break;
+        case NOTEOFF16:
+          datahandler = &handle_single_reg;
+          break;
+        case NOTEOFF15:
+          datahandler = &handle_single_reg2;
+          break;
+        default:
+          break;
+        }
+      } else {
+        datahandler();
+      }
+    }
+  }
 #else
   for (;;) {
 #ifndef POLL
