@@ -104,9 +104,11 @@ void (*stophandler)(void) = &noop;
 void (*const asidstopcmdhandler[])(void);
 
 volatile struct {
+#ifndef FULL
   unsigned char start;
   unsigned char manid;
   unsigned char cmd;
+#endif
   unsigned char mask[4];
   unsigned char msb[4];
   unsigned char lsb[sizeof(regidmap)];
@@ -629,6 +631,10 @@ void midiloop(void) {
   volatile unsigned char i = 0;
   volatile unsigned char c = 0;
 
+#ifdef FULL
+
+
+#else
   for (;;) {
 #ifndef POLL
     if (nmi_in == nmi_ack) {
@@ -679,6 +685,7 @@ void midiloop(void) {
       }
     }
   }
+#endif
 }
 
 int main(void) {
