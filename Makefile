@@ -5,6 +5,9 @@ PRGS := vap-poll.prg vap.prg vap-full.prg vap-full-poll.prg
 
 all: vap.d64 $(PRGS)
 
+vap.crt: vap.prg
+	./prg2crt.py vap.prg vap.crt
+
 vap.prg: $(SOURCES)
 	/usr/local/llvm-mos/bin/mos-c64-clang $(CFLAGS) -o $@ $<
 
@@ -32,5 +35,4 @@ upload: all
 	ncftpput -p "" -v c64 /Temp $(PRGS)
 
 upload-crt: all
-	./prg2crt.py vap.prg vap.crt
 	ncftpput -p "" -Cv c64 vap.crt /Flash/carts/vap.crt

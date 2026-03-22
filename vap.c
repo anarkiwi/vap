@@ -43,6 +43,7 @@ const char VAP_VERSION[] = VAP_NAME VERSION;
 #define SCREENMEM ((volatile unsigned char *)0x0400)
 #define SIDBASE ((volatile unsigned char *)0xd400)
 #define SIDBASE2 ((volatile unsigned char *)0xd420)
+#define SIDCTRL 4
 #define R6510 (*(volatile unsigned char *)0x01)
 #define SIDREGSIZE 28
 #define NMI_VECTOR (*((volatile uint16_t *)0xfffa))
@@ -204,8 +205,30 @@ void initsid(void) {
 }
 
 void updatesid() {
+#ifndef FULL
+#define GATESTATES                                                             \
+  (sidshadow[SIDCTRL] & 0x1) + ((sidshadow[SIDCTRL + 7] & 0x1) << 1) +         \
+      ((sidshadow[SIDCTRL + 14] & 0x1) << 2)
+  unsigned char beforegate = GATESTATES;
+#endif
+
   asidupdatesid(sidshadow);
   sidfromshadow(sidshadow, SIDBASE);
+
+#ifndef FULL
+  unsigned char aftergate = GATESTATES;
+
+  // Any gate 0->1 ?
+  if ((((beforegate & 1) == 0) && ((aftergate & 1) == 1)) |
+      (((beforegate & 2) == 0) && ((aftergate & 2) == 2)) |
+      (((beforegate & 4) == 0) && ((aftergate & 4) == 4))) {
+    VIC.ctrl2 = (nmi_in ^ sidshadow[0]) + sidshadow[SIDCTRL];
+    VIC.addr = (nmi_in ^ sidshadow[7]) + sidshadow[7 + SIDCTRL];
+    // avoid disabling screen.
+    VIC.ctrl1 = ((nmi_in ^ sidshadow[14 + SIDCTRL]) | 0x10) & 0b10111111;
+    VIC.bordercolor = nmi_in + sidshadow[14 + SIDCTRL];
+  }
+#endif
 }
 
 void updatesid2() {
@@ -268,14 +291,21 @@ void handle_single_reg2() {
   datahandler = &handle_single_val2;
 }
 
+void resetvic() {
+  VIC.ctrl1 = 0b00011011;
+  VIC.ctrl2 = 0b00001000;
+  VIC.addr = 0b00010110;
+  VIC.bordercolor = 0x0e;
+}
+
 void handlestart() {
-  VIC.ctrl1 &= 0b11101111;
+  resetvic();
   setasidstop();
 }
 
 void handlestop() {
-  VIC.ctrl1 |= 0b10000;
   initsid();
+  resetvic();
   setasidstop();
 }
 
@@ -555,7 +585,7 @@ void (*const asidstopcmdhandler[])(void) = {
 
 void __attribute__((interrupt)) _handle_nmi() {
   ACK_CIA2_IRQ;
-  VIC.bordercolor = ++nmi_in;
+  ++nmi_in;
 }
 
 void __attribute__((interrupt)) _handle_irq() { ACK_CIA1_IRQ; }
