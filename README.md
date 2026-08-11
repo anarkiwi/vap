@@ -8,6 +8,14 @@ application with Vessel as a C64 hardware sound source.
 
 If you have a second SID installed at $D420, VAP supports accessing it with ASID update messages using command 0x50 (rather than 0x4e).
 
+Build
+-------------------
+
+`make` builds the PRGs and `vap.d64`. The only build dependency is a container runtime: the
+[llvm-mos SDK](https://github.com/anarkiwi/docker-mos-llvm-sdk) and `c1541` (from
+[asid-vice](https://github.com/anarkiwi/asid-vice)) run from pinned images. Set `MOS_CC` or
+`C1541` to use host installs instead.
+
 Other ASID sample applications
 -------------------
 
